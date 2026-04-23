@@ -107,10 +107,12 @@ def main_screen():
     if data:
         announcement = data[0].get('お知らせ', announcement)
 
-    st.markdown(f'''
+    sst.markdown(f'''
         <div class="info-container">
             <span style="font-size: 20px; margin-right: 10px;">🔔</span>
-            <marquee scrollamount="5" style="color: #856404; font-weight: bold;">{announcement}</marquee>
+            <marquee scrollamount="5" style="color: red; font-weight: bold; font-size: 18px;">
+                {announcement}
+            </marquee>
         </div>
     ''', unsafe_allow_html=True)
 
