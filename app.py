@@ -15,8 +15,8 @@ st.set_page_config(
 # --- 1. スプレッドシートからデータを取得する共通関数 ---
 def load_sheet_data(url):
     try:
-        # URLをCSVエクスポート形式に変換
-        if '/export' not in url:
+        # URLをCSV形式に強制変換
+        if 'tqx=out:csv' not in url:
             if '/edit' in url:
                 csv_url = url.split('/edit')[0] + '/export?format=csv'
                 if 'gid=' in url:
@@ -31,39 +31,40 @@ def load_sheet_data(url):
         f = io.StringIO(content)
         reader = csv.reader(f)
         return list(reader)
-    except:
+    except Exception as e:
+        # エラー確認用（本番では消してもOK）
+        # st.sidebar.error(f"読み込みエラー: {e}")
         return None
 
-# --- 2. 「未処理確認」シートを狙い撃ちしてチェックする関数 ---
+# --- 2. 未処理データをチェックする関数（改良版） ---
 def check_unprocessed_data(base_url):
-    # 個別URLからスプレッドシートのIDを抽出
+    # まずは「未処理確認」というシート名を狙う
     try:
         ss_id = base_url.split('/d/')[1].split('/')[0]
-        # 「未処理確認」というシート名のデータをCSVで取得する特殊URL
+        # シート名指定での読み込み
         target_sheet_url = f"https://docs.google.com/spreadsheets/d/{ss_id}/gviz/tq?tqx=out:csv&sheet=未処理確認"
+        rows = load_sheet_data(target_sheet_url)
         
-        response = urllib.request.urlopen(target_sheet_url)
-        content = response.read().decode('utf-8')
-        f = io.StringIO(content)
-        rows = list(csv.reader(f))
-        
+        # もし「未処理確認」という名前で見つからない場合は、D列のURLをそのまま読み込む
+        if not rows:
+            rows = load_sheet_data(base_url)
+
         if not rows or len(rows) < 2:
             return False
             
-        # 2行目以降をループ（B列: index 1, L列: index 11）
         for row in rows[1:]:
+            # B列(index 1) と L列(index 11) が存在するかチェック
             if len(row) >= 12:
                 b_val = row[1].strip()  # B列
                 l_val = row[11].strip() # L列
-                # B列に入力あり、かつL列が空なら未処理と判定
+                # B列に入力あり、かつL列が空なら赤枠対象
                 if b_val != "" and l_val == "":
                     return True
     except:
-        # シート名が見つからない、またはエラーの場合は赤枠なし
         pass
     return False
 
-# --- 3. 画像ボタン表示関数（赤枠対応） ---
+# --- 3. 画像ボタン表示関数 ---
 def get_base64_of_bin_file(bin_file):
     if os.path.exists(bin_file):
         with open(bin_file, 'rb') as f:
@@ -72,8 +73,8 @@ def get_base64_of_bin_file(bin_file):
 
 def clickable_image(img_path, url, fallback_emoji, alert=False):
     img_base64 = get_base64_of_bin_file(img_path)
-    # 未処理ありなら赤枠、なしなら透明枠（サイズ固定のため）
-    border_style = "border: 6px solid red;" if alert else "border: 6px solid transparent;"
+    # 赤枠をより強調（太さ8px）
+    border_style = "border: 8px solid red; box-shadow: 0 0 15px red;" if alert else "border: 8px solid transparent;"
     
     if img_base64:
         html = f'''
@@ -94,10 +95,6 @@ def clickable_image(img_path, url, fallback_emoji, alert=False):
 # --- セッション初期化 ---
 if 'login_status' not in st.session_state:
     st.session_state.login_status = False
-if 'user_name' not in st.session_state:
-    st.session_state.user_name = ""
-if 'user_url' not in st.session_state:
-    st.session_state.user_url = ""
 
 # --- 4. ログイン画面 ---
 def login_screen():
@@ -121,13 +118,12 @@ def login_screen():
 
 # --- 5. メイン画面 ---
 def main_screen():
-    st.markdown("<style>.stApp { background-color: white; } .user-label { text-align: right; font-weight: bold; color: #666; }</style>", unsafe_allow_html=True)
-    st.markdown(f"<p class='user-label'>ログイン中：{st.session_state.user_name} さん</p>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align: right; font-weight: bold; color: #666;'>ログイン中：{st.session_state.user_name} さん</p>", unsafe_allow_html=True)
 
     if os.path.exists("1.png"):
         st.image("1.png", use_container_width=True)
 
-    # お知らせ（E列）
+    # お知らせ（ログインシートのE列）
     login_sheet_url = "https://docs.google.com/spreadsheets/d/1cPgQ3Ej3P7JZPaxprFQnbnDkCatQ15lEHyF9C9tMgZ4/export?format=csv&gid=0"
     sheet_rows = load_sheet_data(login_sheet_url)
     announcement = sheet_rows[1][4] if sheet_rows and len(sheet_rows) > 1 and len(sheet_rows[1]) >= 5 else "安全運転でお願いします"
@@ -141,7 +137,7 @@ def main_screen():
 
     st.write("---")
 
-    # ★ 「未処理確認」シートをチェック
+    # ★ 未処理チェック実行
     has_alert = check_unprocessed_data(st.session_state.user_url)
 
     col3, col4, col5, col7 = st.columns(4)
@@ -151,7 +147,7 @@ def main_screen():
         st.markdown("<p style='text-align:center; font-size:12px; font-weight:bold;'>メンテナンス入力</p>", unsafe_allow_html=True)
 
     with col4:
-        # 未処理があれば赤枠を表示
+        # ここでアラート判定
         clickable_image("4.png", st.session_state.user_url, "📋", alert=has_alert)
         st.markdown("<p style='text-align:center; font-size:12px; font-weight:bold;'>メンテナンス確認</p>", unsafe_allow_html=True)
 
