@@ -14,7 +14,6 @@ st.set_page_config(
 
 # --- 1. スプレッドシートからデータを取得する関数 ---
 def load_sheet_data():
-    # ご提示いただいたシートのURL
     sheet_url = "https://docs.google.com/spreadsheets/d/1cPgQ3Ej3P7JZPaxprFQnbnDkCatQ15lEHyF9C9tMgZ4/export?format=csv&gid=0"
     try:
         response = urllib.request.urlopen(sheet_url)
@@ -61,32 +60,25 @@ def clickable_image(img_path, url, fallback_emoji):
 
 # --- 4. ログイン画面 ---
 def login_screen():
-    # ログイン画面にもロゴやバナーを出したい場合はここに追加
     if os.path.exists("1.png"):
         st.image("1.png", use_container_width=True)
-        
     st.markdown("<h2 style='text-align: center;'>ログイン</h2>", unsafe_allow_html=True)
-    
     user_code = st.text_input("担当者コード")
     password = st.text_input("パスワード", type="password")
-    
     if st.button("ログイン", use_container_width=True):
         data = load_sheet_data()
         if data:
-            # A列:担当者コード, C列:パスワード で照合
             user_match = next((row for row in data if str(row['担当者コード']) == user_code and str(row['パスワード']) == password), None)
-            
             if user_match:
                 st.session_state.login_status = True
                 st.session_state.user_name = user_match['担当者名']
-                st.session_state.user_url = user_match['URL'] # D列
+                st.session_state.user_url = user_match['URL']
                 st.rerun()
             else:
                 st.error("担当者コードまたはパスワードが正しくありません")
 
 # --- 5. メイン画面 ---
 def main_screen():
-    # スタイル調整
     st.markdown("""
         <style>
         .stApp { background-color: white; }
@@ -100,60 +92,57 @@ def main_screen():
             align-items: center;
             margin-bottom: 20px;
         }
+        p { margin-bottom: 5px !important; }
         </style>
     """, unsafe_allow_html=True)
 
     st.markdown(f"<p class='user-label'>ログイン中：{st.session_state.user_name} さん</p>", unsafe_allow_html=True)
 
-    # ① バナー (1.png)
     if os.path.exists("1.png"):
         st.image("1.png", use_container_width=True)
 
-    # ② お知らせエリア（スプレッドシートのE列から取得）
+    # ② お知らせエリア
     data = load_sheet_data()
-    # E列の見出しが「お知らせ」であると想定
-    announcement = "今日も一日安全運転で頑張りましょう！" # デフォルト
+    announcement = "今日も一日安全運転で頑張りましょう！"
     if data:
-        # 1行目のE列（お知らせ列）を取得
         announcement = data[0].get('お知らせ', announcement)
 
     st.markdown(f'''
         <div class="info-container">
             <span style="font-size: 20px; margin-right: 10px;">🔔</span>
-            <marquee scrollamount="5" style="color: #856404; font-weight: bold;">
-                {announcement}
-            </marquee>
+            <marquee scrollamount="5" style="color: #856404; font-weight: bold;">{announcement}</marquee>
         </div>
     ''', unsafe_allow_html=True)
 
     st.write("---")
 
-    # ③ ④ ⑤ メインボタン
-    col3, col4, col5 = st.columns(3)
+    # ③ ④ ⑤ ⑦ メインボタン（4列構成）
+    col3, col4, col5, col7 = st.columns(4)
     
-    # ③ メンテナンス入力（共通URL）
-    form_url = "https://docs.google.com/forms/d/e/1FAIpQLSc4E3L_UJkVxMMSTOYgcw3SJyoBixHoJfhe0WC-x1wbK6lsHw/viewform?usp=sharing"
-
     with col3:
+        form_url = "https://docs.google.com/forms/d/e/1FAIpQLSc4E3L_UJkVxMMSTOYgcw3SJyoBixHoJfhe0WC-x1wbK6lsHw/viewform?usp=sharing"
         clickable_image("3.png", form_url, "📄")
-        st.markdown("<p style='text-align:center; font-weight:bold; color:black;'>メンテナンス入力</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; font-size:12px; font-weight:bold; color:black;'>メンテナンス<br>入力</p>", unsafe_allow_html=True)
 
     with col4:
-        # ★ ④ ログインした人の個別URL（D列）を使用
         clickable_image("4.png", st.session_state.user_url, "📋")
-        st.markdown("<p style='text-align:center; font-weight:bold; color:black;'>メンテナンス確認</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; font-size:12px; font-weight:bold; color:black;'>メンテナンス<br>確認</p>", unsafe_allow_html=True)
 
     with col5:
-        # ⑤ キャンペーン（必要に応じてURL変更可）
         clickable_image("5.png", "https://www.google.com", "📢")
-        st.markdown("<p style='text-align:center; font-weight:bold; color:black;'>キャンペーン入力</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; font-size:12px; font-weight:bold; color:black;'>キャンペーン<br>入力</p>", unsafe_allow_html=True)
+
+    with col7:
+        # ★ 新しく追加した「勉強会」ボタン
+        study_url = "https://drive.google.com/drive/folders/1vZE__7Th8RuVtkNQpG-rAZSBtAvG7cTX"
+        clickable_image("7.png", study_url, "🎓")
+        st.markdown("<p style='text-align:center; font-size:12px; font-weight:bold; color:black;'>勉強会<br>資料</p>", unsafe_allow_html=True)
 
     # ⑥ ロゴ
     st.write(" ")
     if os.path.exists("6.png"):
         st.image("6.png", width=180)
     
-    # ログアウトボタン（サイドバー）
     if st.sidebar.button("ログアウト"):
         st.session_state.login_status = False
         st.rerun()
