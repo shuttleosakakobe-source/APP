@@ -8,13 +8,12 @@ import io
 # --- ページ設定 ---
 st.set_page_config(
     page_title="ダスキンシャトル北大阪 業務アプリ",
-    page_icon="1.png",
+    page_icon="icon.png", # 先ほど作成した新しいロゴを指定
     layout="centered"
 )
 
 # --- 1. スプレッドシートからデータを取得する関数 ---
 def load_sheet_data():
-    # ログイン管理シートのURL
     sheet_url = "https://docs.google.com/spreadsheets/d/1cPgQ3Ej3P7JZPaxprFQnbnDkCatQ15lEHyF9C9tMgZ4/export?format=csv&gid=0"
     try:
         response = urllib.request.urlopen(sheet_url)
@@ -23,7 +22,7 @@ def load_sheet_data():
         reader = csv.DictReader(f)
         return list(reader)
     except Exception as e:
-        st.error(f"データの読み込みに失敗しました。共有設定を確認してください。")
+        st.error("データの読み込みに失敗しました。")
         return None
 
 # --- 2. セッション情報の初期化 ---
@@ -32,27 +31,32 @@ if 'login_status' not in st.session_state:
 if 'user_name' not in st.session_state:
     st.session_state.user_name = ""
 if 'user_url' not in st.session_state:
-    st.session_state.user_url = "https://www.google.com"
+    st.session_state.user_url = ""
+if 'needs_alert' not in st.session_state:
+    st.session_state.needs_alert = False
 
-# --- 3. 画像ボタン用関数 ---
+# --- 3. 画像ボタン用関数（赤枠対応） ---
 def get_base64_of_bin_file(bin_file):
     if os.path.exists(bin_file):
         with open(bin_file, 'rb') as f:
             return base64.b64encode(f.read()).decode()
     return None
 
-def clickable_image(img_path, url, fallback_emoji):
+def clickable_image(img_path, url, fallback_emoji, alert=False):
     img_base64 = get_base64_of_bin_file(img_path)
+    # alertがTrueなら赤枠、Falseなら透明枠
+    border_style = "border: 6px solid red; box-shadow: 0 0 10px red;" if alert else "border: 6px solid transparent;"
+    
     if img_base64:
         html = f'''
             <a href="{url}" target="_blank" style="text-decoration: none;">
-                <img src="data:image/png;base64,{img_base64}" style="width: 100%; aspect-ratio: 1/1; object-fit: contain; cursor: pointer; border-radius: 15px;">
+                <img src="data:image/png;base64,{img_base64}" style="width: 100%; aspect-ratio: 1/1; object-fit: contain; cursor: pointer; border-radius: 20px; {border_style}">
             </a>
         '''
     else:
         html = f'''
             <a href="{url}" target="_blank" style="text-decoration: none;">
-                <div style="width: 100%; aspect-ratio: 1/1; background-color: #f0f2f6; border-radius: 15px; display: flex; align-items: center; justify-content: center; font-size: 50px;">
+                <div style="width: 100%; aspect-ratio: 1/1; background-color: #f0f2f6; border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 50px; {border_style}">
                     {fallback_emoji}
                 </div>
             </a>
@@ -63,7 +67,6 @@ def clickable_image(img_path, url, fallback_emoji):
 def login_screen():
     if os.path.exists("1.png"):
         st.image("1.png", use_container_width=True)
-        
     st.markdown("<h2 style='text-align: center;'>ログイン</h2>", unsafe_allow_html=True)
     
     user_code = st.text_input("担当者コード").strip()
@@ -72,82 +75,71 @@ def login_screen():
     if st.button("ログイン", use_container_width=True):
         data = load_sheet_data()
         if data:
-            # スプレッドシートのA列:担当者コード, C列:パスワード で照合
-            user_match = next((row for row in data if str(row['担当者コード']).strip() == user_code and str(row['パスワード']).strip() == password), None)
+            # 担当者コードとパスワードが一致する行を探す
+            user_match = next((row for row in data if str(row.get('担当者コード')).strip() == user_code and str(row.get('パスワード')).strip() == password), None)
             
             if user_match:
                 st.session_state.login_status = True
-                st.session_state.user_name = user_match['担当者名']
-                st.session_state.user_url = user_match['URL']
+                st.session_state.user_name = user_match.get('担当者名')
+                st.session_state.user_url = user_match.get('URL')
+                
+                # ★ F列（列名が「未処理数」などの場合）が0以外ならアラートを出す
+                # 列名が不明な場合は左から6番目の列として判定
+                f_val = list(user_match.values())[5] if len(user_match) >= 6 else "0"
+                try:
+                    # 数字に変換して0以外ならTrue
+                    st.session_state.needs_alert = float(f_val) != 0
+                except:
+                    # 数字でない文字が入っている場合も「0以外」として扱う
+                    st.session_state.needs_alert = str(f_val).strip() != "" and str(f_val).strip() != "0"
+                
                 st.rerun()
             else:
                 st.error("担当者コードまたはパスワードが正しくありません")
 
 # --- 5. メイン画面 ---
 def main_screen():
-    # スタイル設定
-    st.markdown("""
-        <style>
-        .stApp { background-color: white; }
-        .user-label { text-align: right; font-size: 14px; color: #666; font-weight: bold; }
-        .info-container {
-            background-color: #fffbe6;
-            border: 2px solid #ffe58f;
-            padding: 10px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-        </style>
-    """, unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align: right; font-weight: bold; color: #666;'>ログイン中：{st.session_state.user_name} さん</p>", unsafe_allow_html=True)
 
-    st.markdown(f"<p class='user-label'>ログイン中：{st.session_state.user_name} さん</p>", unsafe_allow_html=True)
-
-    # ① バナー
     if os.path.exists("1.png"):
         st.image("1.png", use_container_width=True)
 
-    # ② お知らせエリア（赤色テロップ）
+    # お知らせ（ログインシートの1行目・お知らせ列）
     data = load_sheet_data()
     announcement = "今日も一日安全運転で頑張りましょう！"
     if data:
         announcement = data[0].get('お知らせ', announcement)
 
     st.markdown(f'''
-        <div class="info-container">
+        <div style="background-color: #fffbe6; border: 2px solid #ffe58f; padding: 10px; border-radius: 10px; display: flex; align-items: center; margin-bottom: 20px;">
             <span style="font-size: 20px; margin-right: 10px;">🔔</span>
-            <marquee scrollamount="5" style="color: red; font-weight: bold; font-size: 18px;">
-                {announcement}
-            </marquee>
+            <marquee scrollamount="5" style="color: red; font-weight: bold; font-size: 18px;">{announcement}</marquee>
         </div>
     ''', unsafe_allow_html=True)
 
     st.write("---")
 
-    # ③ ④ ⑤ ⑦ メインボタン（4列構成）
     col3, col4, col5, col7 = st.columns(4)
     
     with col3:
         form_url = "https://docs.google.com/forms/d/e/1FAIpQLSc4E3L_UJkVxMMSTOYgcw3SJyoBixHoJfhe0WC-x1wbK6lsHw/viewform?usp=sharing"
         clickable_image("3.png", form_url, "📄")
-        st.markdown("<p style='text-align:center; font-size:12px; font-weight:bold; color:black;'>メンテナンス<br>入力</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; font-size:12px; font-weight:bold;'>メンテナンス<br>入力</p>", unsafe_allow_html=True)
 
     with col4:
-        clickable_image("4.png", st.session_state.user_url, "📋")
-        st.markdown("<p style='text-align:center; font-size:12px; font-weight:bold; color:black;'>メンテナンス<br>確認</p>", unsafe_allow_html=True)
+        # ★ ログイン時に判定した結果（needs_alert）を反映
+        clickable_image("4.png", st.session_state.user_url, "📋", alert=st.session_state.needs_alert)
+        st.markdown("<p style='text-align:center; font-size:12px; font-weight:bold;'>メンテナンス<br>確認</p>", unsafe_allow_html=True)
 
     with col5:
         clickable_image("5.png", "https://www.google.com", "📢")
-        st.markdown("<p style='text-align:center; font-size:12px; font-weight:bold; color:black;'>キャンペーン<br>入力</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; font-size:12px; font-weight:bold;'>キャンペーン<br>入力</p>", unsafe_allow_html=True)
 
     with col7:
         study_url = "https://drive.google.com/drive/folders/1vZE__7Th8RuVtkNQpG-rAZSBtAvG7cTX"
         clickable_image("7.png", study_url, "🎓")
-        st.markdown("<p style='text-align:center; font-size:12px; font-weight:bold; color:black;'>勉強会<br>資料</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; font-size:12px; font-weight:bold;'>勉強会<br>資料</p>", unsafe_allow_html=True)
 
-    # ⑥ ロゴ
-    st.write(" ")
     if os.path.exists("6.png"):
         st.image("6.png", width=180)
     
