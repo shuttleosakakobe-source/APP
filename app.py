@@ -57,11 +57,10 @@ def main_screen():
         <style>
         header {visibility: hidden; height: 0px !important;}
         .block-container { 
-            padding-top: 1rem !important; 
-            padding-bottom: 1rem !important; 
+            padding-top: 1.5rem !important; 
+            padding-bottom: 2rem !important; 
             max-width: 500px; 
         }
-        /* 各要素の上下間隔を少し広げる */
         [data-testid="stVerticalBlock"] { gap: 1.2rem !important; }
         
         .user-label { 
@@ -69,43 +68,57 @@ def main_screen():
             font-size: 13px; 
             color: #666; 
             font-weight: bold; 
-            margin-bottom: 20px; 
+            margin-bottom: 5px; 
         }
         .button-grid { 
             display: grid; 
             grid-template-columns: repeat(4, 1fr); 
             gap: 12px; 
-            margin-top: 10px; 
-            margin-bottom: 10px;
+            margin: 15px 0;
         }
         @media (max-width: 600px) { .button-grid { grid-template-columns: repeat(2, 1fr); } }
         .btn-item { text-align: center; text-decoration: none; display: block; color: black !important; }
-        .btn-text { font-size: 12px; font-weight: bold; margin-top: 5px; line-height: 1.2; }
+        .btn-text { font-size: 12px; font-weight: bold; margin-top: 6px; line-height: 1.2; }
         footer {visibility: hidden;}
         
-        /* 区切り線の余白 */
-        hr { margin-top: 1.5rem !important; margin-bottom: 1.5rem !important; }
+        hr { margin: 1.2rem 0 !important; }
         </style>
     """, unsafe_allow_html=True)
 
-    # 1. ユーザー名
+    # 👤 ユーザー名
     st.markdown(f"<p class='user-label'>👤 {st.session_state.user_name} さん</p>", unsafe_allow_html=True)
     
-    # 2. ロゴ (1.png)
+    # 🏠 ロゴ (1.png)
     if os.path.exists("1.png"):
         st.image("1.png", use_container_width=True)
 
-    # 3. お知らせ
+    # 🔔 お知らせ
     data = load_sheet_data()
     announcement = data[0].get('お知らせ', '安全運転でお願いします') if data else "安全運転でお願いします"
     st.markdown(f'''
-        <div style="background-color:#fffbe6; border:2px solid #ffe58f; padding:8px; border-radius:10px; display:flex; align-items:center; margin: 10px 0;">
+        <div style="background-color:#fffbe6; border:2px solid #ffe58f; padding:10px; border-radius:10px; display:flex; align-items:center; margin-top: 5px;">
             <span style="font-size:16px; margin-right:8px;">🔔</span>
             <marquee scrollamount="5" style="color:red; font-weight:bold; font-size:16px;">{announcement}</marquee>
         </div>
     ''', unsafe_allow_html=True)
 
-    # 4. ボタン表示
+    # ⚠️ 管理者メニュー（お知らせの下に配置）
+    if st.session_state.user_role == "1" and data:
+        st.markdown("<p style='font-size:13px; font-weight:bold; color:red; margin-top:10px; margin-bottom:5px;'>⚠️ 管理者メニュー：メンテナンス異常一覧</p>", unsafe_allow_html=True)
+        alert_rows = []
+        for row in data:
+            vals = list(row.values())
+            if len(vals) >= 6 and str(vals[5]).strip() not in ["0", "", "None"]:
+                alert_rows.append({"name": str(vals[1]), "url": str(vals[3])})
+        
+        if alert_rows:
+            opts = [f"{r['name']} さんの異常を確認" for r in alert_rows]
+            sel = st.selectbox("対象者を選択してください", opts, label_visibility="collapsed")
+            st.link_button(f"👉 {sel}を開く", alert_rows[opts.index(sel)]['url'], use_container_width=True)
+        else:
+            st.info("現在、メンテナンス異常のスタッフはいません。")
+
+    # 🔘 メインボタン
     b1 = get_img_html("3.png", "📄")
     b2 = get_img_html("4.png", "📋", alert=st.session_state.needs_alert)
     b3 = get_img_html("5.png", "📢")
@@ -121,7 +134,7 @@ def main_screen():
     '''
     st.markdown(grid_html, unsafe_allow_html=True)
 
-    # 5. 下部セクション (ロゴとログアウト)
+    # 🏁 下部：ロゴ2とログアウト
     st.write("---")
     col1, col2 = st.columns([1, 1])
     with col1:
@@ -134,24 +147,7 @@ def main_screen():
             st.session_state.logout_requested = True
             st.rerun()
 
-    # 6. 管理者メニュー (画像2/6.png の下に配置)
-    if st.session_state.user_role == "1" and data:
-        st.markdown("<div style='margin-top:20px;'></div>", unsafe_allow_html=True)
-        st.markdown("<p style='font-size:13px; font-weight:bold; color:red; margin-bottom:5px;'>⚠️ 管理者メニュー：メンテナンス異常一覧</p>", unsafe_allow_html=True)
-        alert_rows = []
-        for row in data:
-            vals = list(row.values())
-            if len(vals) >= 6 and str(vals[5]).strip() not in ["0", "", "None"]:
-                alert_rows.append({"name": str(vals[1]), "url": str(vals[3])})
-        
-        if alert_rows:
-            opts = [f"{r['name']} さんの異常を確認" for r in alert_rows]
-            sel = st.selectbox("対象者選択", opts, label_visibility="collapsed")
-            st.link_button(f"👉 {sel}を開く", alert_rows[opts.index(sel)]['url'], use_container_width=True)
-        else:
-            st.info("現在、メンテナンス異常のスタッフはいません。")
-
-# --- 6. ログインロジック ---
+# --- 6. ログイン・自動ログイン制御 ---
 if 'login_status' not in st.session_state:
     st.session_state.login_status = False
 if 'logout_requested' not in st.session_state:
