@@ -45,7 +45,6 @@ def set_login_storage(name, url, alert, role):
     st_javascript(f"localStorage.setItem('shuttle_user_role', '{role}');")
 
 def get_login_storage():
-    # JavaScript経由で取得
     name = st_javascript("localStorage.getItem('shuttle_user_name');")
     url = st_javascript("localStorage.getItem('shuttle_user_url');")
     alert = st_javascript("localStorage.getItem('shuttle_needs_alert');")
@@ -68,7 +67,6 @@ def main_screen():
         </style>
     """, unsafe_allow_html=True)
 
-    # ユーザー名表示
     st.markdown(f"<p class='user-label'>👤 {st.session_state.user_name} さん</p>", unsafe_allow_html=True)
     
     if os.path.exists("1.png"):
@@ -84,7 +82,6 @@ def main_screen():
         </div>
     ''', unsafe_allow_html=True)
 
-    # ボタン生成
     b1 = get_img_html("3.png", "📄")
     b2 = get_img_html("4.png", "📋", alert=st.session_state.needs_alert)
     b3 = get_img_html("5.png", "📢")
@@ -100,7 +97,6 @@ def main_screen():
     '''
     st.markdown(grid_html, unsafe_allow_html=True)
 
-    # 管理者メニュー
     if st.session_state.user_role == "1" and data:
         st.write("---")
         st.markdown("<p style='font-size:12px; font-weight:bold; color:red;'>⚠️ 管理者メニュー</p>", unsafe_allow_html=True)
@@ -119,39 +115,42 @@ def main_screen():
     with c1:
         if os.path.exists("6.png"): st.image("6.png", width=110)
     with c2:
+        # 【修正】ログアウトボタンの動作を強化
         if st.button("🚪 ログアウト", use_container_width=True):
-            # 完全に消去
-            st_javascript("localStorage.clear();")
-            st.session_state.clear()
+            st_javascript("localStorage.clear();") # ブラウザ保存を消去
+            st.session_state.login_status = False # セッション変数を即座にオフ
+            st.session_state.logout_requested = True # ログアウト要求フラグを立てる
             st.rerun()
 
 # --- 6. ログインロジック ---
+# 初回起動時のみ実行
 if 'login_status' not in st.session_state:
     st.session_state.login_status = False
+if 'logout_requested' not in st.session_state:
+    st.session_state.logout_requested = False
 
-# ブラウザデータの取得
-stored = get_login_storage()
-
-# 【重要】データが "0" や "null" の場合は無視するガード
-if stored and not st.session_state.login_status:
-    s_name = str(stored[0])
-    # 名前が 0, null, None 以外の場合のみ自動ログイン
-    if s_name not in ["None", "null", "0", "undefined", ""]:
-        st.session_state.user_name = s_name
+# ログアウト直後でない場合のみ、自動ログインを試行
+if not st.session_state.login_status and not st.session_state.logout_requested:
+    stored = get_login_storage()
+    if stored and str(stored[0]) not in ["None", "null", "0", "undefined", ""]:
+        st.session_state.user_name = str(stored[0])
         st.session_state.user_url = str(stored[1])
         st.session_state.needs_alert = (str(stored[2]) == 'True')
         st.session_state.user_role = str(stored[3])
         st.session_state.login_status = True
         st.rerun()
 
+# メイン画面表示
 if st.session_state.login_status:
     main_screen()
 else:
     # ログイン画面
     st.markdown("<style>header {visibility: hidden;}</style>", unsafe_allow_html=True)
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
+    st.markdown("<h3 style='text-align: center;'>ログイン</h3>", unsafe_allow_html=True)
     u_code = st.text_input("担当者コード").strip()
     u_pass = st.text_input("パスワード", type="password").strip()
+    
     if st.button("ログイン", use_container_width=True):
         data = load_sheet_data()
         user = next((r for r in data if str(r.get('担当者コード')).strip() == u_code and str(r.get('パスワード')).strip() == u_pass), None) if data else None
@@ -162,7 +161,7 @@ else:
             st.session_state.needs_alert = (str(vals[5]).strip() != "0")
             st.session_state.user_role = str(vals[6]).strip() if len(vals) >= 7 else "2"
             st.session_state.login_status = True
-            # 保存
+            st.session_state.logout_requested = False # ログイン成功したのでフラグを解除
             set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role)
             st.rerun()
         else:
