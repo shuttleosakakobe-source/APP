@@ -4,7 +4,6 @@ import base64
 import urllib.request
 import csv
 import io
-import time
 from streamlit_javascript import st_javascript 
 
 # --- 1. ページ設定 ---
@@ -46,6 +45,7 @@ def set_login_storage(name, url, alert, role):
     st_javascript(f"localStorage.setItem('shuttle_user_role', '{role}');")
 
 def get_login_storage():
+    # JavaScript経由で取得
     name = st_javascript("localStorage.getItem('shuttle_user_name');")
     url = st_javascript("localStorage.getItem('shuttle_user_url');")
     alert = st_javascript("localStorage.getItem('shuttle_needs_alert');")
@@ -68,6 +68,7 @@ def main_screen():
         </style>
     """, unsafe_allow_html=True)
 
+    # ユーザー名表示
     st.markdown(f"<p class='user-label'>👤 {st.session_state.user_name} さん</p>", unsafe_allow_html=True)
     
     if os.path.exists("1.png"):
@@ -83,7 +84,7 @@ def main_screen():
         </div>
     ''', unsafe_allow_html=True)
 
-    # ボタンHTML
+    # ボタン生成
     b1 = get_img_html("3.png", "📄")
     b2 = get_img_html("4.png", "📋", alert=st.session_state.needs_alert)
     b3 = get_img_html("5.png", "📢")
@@ -99,6 +100,7 @@ def main_screen():
     '''
     st.markdown(grid_html, unsafe_allow_html=True)
 
+    # 管理者メニュー
     if st.session_state.user_role == "1" and data:
         st.write("---")
         st.markdown("<p style='font-size:12px; font-weight:bold; color:red;'>⚠️ 管理者メニュー</p>", unsafe_allow_html=True)
@@ -112,27 +114,35 @@ def main_screen():
             sel = st.selectbox("対象者選択", opts, label_visibility="collapsed")
             st.link_button(f"👉 {sel}を開く", alert_rows[opts.index(sel)]['url'], use_container_width=True)
 
-    if os.path.exists("6.png"):
-        st.image("6.png", width=110)
-    
-    if st.sidebar.button("ログアウト"):
-        st_javascript("localStorage.clear();")
-        st.session_state.clear()
-        st.rerun()
+    st.write("---")
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        if os.path.exists("6.png"): st.image("6.png", width=110)
+    with c2:
+        if st.button("🚪 ログアウト", use_container_width=True):
+            # 完全に消去
+            st_javascript("localStorage.clear();")
+            st.session_state.clear()
+            st.rerun()
 
 # --- 6. ログインロジック ---
 if 'login_status' not in st.session_state:
     st.session_state.login_status = False
 
-# PC版でのLocalStorage読み込み待ち
+# ブラウザデータの取得
 stored = get_login_storage()
-if stored and stored[0] is not None and not st.session_state.login_status:
-    st.session_state.user_name = str(stored[0])
-    st.session_state.user_url = str(stored[1])
-    st.session_state.needs_alert = (str(stored[2]) == 'True')
-    st.session_state.user_role = str(stored[3])
-    st.session_state.login_status = True
-    st.rerun()
+
+# 【重要】データが "0" や "null" の場合は無視するガード
+if stored and not st.session_state.login_status:
+    s_name = str(stored[0])
+    # 名前が 0, null, None 以外の場合のみ自動ログイン
+    if s_name not in ["None", "null", "0", "undefined", ""]:
+        st.session_state.user_name = s_name
+        st.session_state.user_url = str(stored[1])
+        st.session_state.needs_alert = (str(stored[2]) == 'True')
+        st.session_state.user_role = str(stored[3])
+        st.session_state.login_status = True
+        st.rerun()
 
 if st.session_state.login_status:
     main_screen()
@@ -152,6 +162,7 @@ else:
             st.session_state.needs_alert = (str(vals[5]).strip() != "0")
             st.session_state.user_role = str(vals[6]).strip() if len(vals) >= 7 else "2"
             st.session_state.login_status = True
+            # 保存
             set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role)
             st.rerun()
         else:
