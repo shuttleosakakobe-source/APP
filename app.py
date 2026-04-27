@@ -14,7 +14,8 @@ st.set_page_config(
 )
 
 # --- 2. スプレッドシート取得関数 ---
-@st.cache_data(ttl=600)
+# ttlを0に設定し、キャッシュを無効化することで常に最新データを取得します
+@st.cache_data(ttl=0)
 def load_sheet_data():
     sheet_url = "https://docs.google.com/spreadsheets/d/1cPgQ3Ej3P7JZPaxprFQnbnDkCatQ15lEHyF9C9tMgZ4/export?format=csv&gid=0"
     try:
@@ -62,28 +63,28 @@ def main_screen():
             max-width: 500px; 
         }
         [data-testid="stVerticalBlock"] { gap: 1.2rem !important; }
-        
-        .user-label { 
-            text-align: right; 
-            font-size: 13px; 
-            color: #666; 
-            font-weight: bold; 
-            margin-bottom: 5px; 
-        }
-        .button-grid { 
-            display: grid; 
-            grid-template-columns: repeat(4, 1fr); 
-            gap: 12px; 
-            margin: 15px 0;
-        }
+        .user-label { text-align: right; font-size: 13px; color: #666; font-weight: bold; margin-bottom: 5px; }
+        .button-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 15px 0; }
         @media (max-width: 600px) { .button-grid { grid-template-columns: repeat(2, 1fr); } }
         .btn-item { text-align: center; text-decoration: none; display: block; color: black !important; }
         .btn-text { font-size: 12px; font-weight: bold; margin-top: 6px; line-height: 1.2; }
         footer {visibility: hidden;}
-        
         hr { margin: 1.2rem 0 !important; }
         </style>
     """, unsafe_allow_html=True)
+
+    # 常に最新のスプレッドシート情報を読み込み
+    data = load_sheet_data()
+    
+    # ログイン中のユーザーの最新の「未処理状態(F列)」を確認
+    current_user_data = None
+    if data:
+        current_user_data = next((r for r in data if r.get('担当者名') == st.session_state.user_name), None)
+    
+    # 未処理フラグの更新反映
+    if current_user_data:
+        vals = list(current_user_data.values())
+        st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
 
     # 👤 ユーザー名
     st.markdown(f"<p class='user-label'>👤 {st.session_state.user_name} さん</p>", unsafe_allow_html=True)
@@ -93,7 +94,6 @@ def main_screen():
         st.image("1.png", use_container_width=True)
 
     # 🔔 お知らせ
-    data = load_sheet_data()
     announcement = data[0].get('お知らせ', '安全運転でお願いします') if data else "安全運転でお願いします"
     st.markdown(f'''
         <div style="background-color:#fffbe6; border:2px solid #ffe58f; padding:10px; border-radius:10px; display:flex; align-items:center; margin-top: 5px;">
@@ -102,9 +102,9 @@ def main_screen():
         </div>
     ''', unsafe_allow_html=True)
 
-    # ⚠️ 管理者メニュー（お知らせの下に配置）
+    # ⚠️ 管理者メニュー（未処理一覧）
     if st.session_state.user_role == "1" and data:
-        st.markdown("<p style='font-size:13px; font-weight:bold; color:red; margin-top:10px; margin-bottom:5px;'>⚠️ 管理者メニュー：メンテナンス異常一覧</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-size:13px; font-weight:bold; color:red; margin-top:10px; margin-bottom:5px;'>⚠️ 管理者メニュー：メンテナンス未処理一覧</p>", unsafe_allow_html=True)
         alert_rows = []
         for row in data:
             vals = list(row.values())
@@ -112,13 +112,13 @@ def main_screen():
                 alert_rows.append({"name": str(vals[1]), "url": str(vals[3])})
         
         if alert_rows:
-            opts = [f"{r['name']} さんの異常を確認" for r in alert_rows]
+            opts = [f"{r['name']} さんの未処理を確認" for r in alert_rows]
             sel = st.selectbox("対象者を選択してください", opts, label_visibility="collapsed")
             st.link_button(f"👉 {sel}を開く", alert_rows[opts.index(sel)]['url'], use_container_width=True)
         else:
-            st.info("現在、メンテナンス異常のスタッフはいません。")
+            st.info("現在、メンテナンス未処理のスタッフはいません。")
 
-    # 🔘 メインボタン
+    # 🔘 メインボタン（ここで最新の needs_alert を反映）
     b1 = get_img_html("3.png", "📄")
     b2 = get_img_html("4.png", "📋", alert=st.session_state.needs_alert)
     b3 = get_img_html("5.png", "📢")
@@ -166,6 +166,7 @@ if not st.session_state.login_status and not st.session_state.logout_requested:
 if st.session_state.login_status:
     main_screen()
 else:
+    # ログイン画面
     st.markdown("<style>header {visibility: hidden;}</style>", unsafe_allow_html=True)
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
     u_code = st.text_input("担当者コード").strip()
@@ -177,7 +178,7 @@ else:
             vals = list(user.values())
             st.session_state.user_name = user.get('担当者名')
             st.session_state.user_url = user.get('URL')
-            st.session_state.needs_alert = (str(vals[5]).strip() != "0")
+            st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
             st.session_state.user_role = str(vals[6]).strip() if len(vals) >= 7 else "2"
             st.session_state.login_status = True
             st.session_state.logout_requested = False
