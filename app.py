@@ -24,61 +24,54 @@ def load_sheet_data():
     except:
         return None
 
-# --- 画像を読み込む関数 ---
-def get_image_base64(file_name):
+# --- 画像を読み込んでBase64化する関数 ---
+def get_img_html(file_name, emoji, alert=False):
+    border = "5px solid red" if alert else "5px solid transparent"
+    shadow = "box-shadow: 0 0 10px red;" if alert else ""
+    
     if os.path.exists(file_name):
-        with open(file_name, 'rb') as f:
-            return base64.b64encode(f.read()).decode()
-    return None
+        with open(file_name, "rb") as f:
+            data = base64.b64encode(f.read()).decode()
+        return f'<img src="data:image/png;base64,{data}" style="width:100%; aspect-ratio:1/1; object-fit:contain; border-radius:15px; border:{border}; {shadow}">'
+    else:
+        # 画像がない場合は絵文字で代用
+        return f'<div style="width:100%; aspect-ratio:1/1; background:#f0f2f6; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:40px; border:{border}; {shadow}">{emoji}</div>'
 
 # --- メイン画面 ---
 def main_screen():
-    # PC/スマホ切り替えと、不要な枠線を消すCSS
+    # PC/スマホの出し分け用CSS
     st.markdown("""
         <style>
         .stApp { background-color: white; }
         .user-label { text-align: right; font-size: 14px; color: #666; font-weight: bold; }
         
-        /* ボタンの並び：PCは4列、スマホは2列 */
+        /* ボタンのグリッド設定 */
         .button-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 12px;
-            margin-top: 15px;
+            grid-template-columns: repeat(4, 1fr); /* PCは4列 */
+            gap: 10px;
+            margin-top: 10px;
         }
         @media (max-width: 600px) {
-            .button-grid { grid-template-columns: repeat(2, 1fr); }
+            .button-grid {
+                grid-template-columns: repeat(2, 1fr); /* スマホは2列 */
+            }
         }
-
         .btn-item { text-align: center; text-decoration: none; display: block; }
-        .btn-content {
-            width: 100%;
-            aspect-ratio: 1/1;
-            border-radius: 18px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            background-color: #f0f2f6;
-        }
-        .btn-image { width: 100%; height: 100%; object-fit: contain; }
-        .btn-text { color: black; font-size: 13px; font-weight: bold; margin-top: 8px; line-height: 1.2; }
-        
-        /* 枠線の設定 */
-        .alert-style { border: 5px solid red; box-shadow: 0 0 12px red; }
-        .no-border { border: 5px solid transparent; }
+        .btn-text { color: black; font-size: 12px; font-weight: bold; margin-top: 5px; line-height: 1.2; }
+        </marquee>
         </style>
     """, unsafe_allow_html=True)
 
     st.markdown(f"<p class='user-label'>👤 {st.session_state.user_name} さん</p>", unsafe_allow_html=True)
 
-    # ロゴ表示
     if os.path.exists("1.png"):
         st.image("1.png", use_container_width=True)
 
     # お知らせ（ログインシートから取得）
     data = load_sheet_data()
-    announcement = data[0].get('お知らせ', '安全運転でお願いします') if data else "安全運転でお願いします"
+    announcement = data[0].get('お知らせ', '今日も一日安全運転で！') if data else "安全運転で！"
+
     st.markdown(f'''
         <div style="background-color: #fffbe6; border: 2px solid #ffe58f; padding: 10px; border-radius: 10px; display: flex; align-items: center; margin-bottom: 10px;">
             <span style="font-size: 20px; margin-right: 10px;">🔔</span>
@@ -86,33 +79,31 @@ def main_screen():
         </div>
     ''', unsafe_allow_html=True)
 
-    # 画像ファイルの読み込み
-    img3 = get_image_base64("3.png")
-    img4 = get_image_base64("4.png")
-    img5 = get_image_base64("5.png")
-    img7 = get_image_base64("image_d3349a.png") # 勉強会ロゴ
+    # 各ボタンのHTMLを作成
+    # ファイル名は大文字小文字まで正確に合わせてください（image_d3349a.pngなど）
+    html_btn1 = get_img_html("3.png", "📄")
+    html_btn2 = get_img_html("4.png", "📋", alert=st.session_state.needs_alert)
+    html_btn3 = get_img_html("5.png", "📢")
+    html_btn4 = get_img_html("image_d3349a.png", "🎓") # 新しい勉強会ロゴ
 
-    # ボタン1つ分を作成する補助関数
-    def create_button_html(img_b64, emoji, label, url, alert=False):
-        border = "alert-style" if alert else "no-border"
-        content = f'<img src="data:image/png;base64,{img_b64}" class="btn-image">' if img_b64 else f'<span style="font-size:40px;">{emoji}</span>'
-        return f'''
-            <a class="btn-item" href="{url}" target="_blank">
-                <div class="btn-content {border}">{content}</div>
-                <p class="btn-text">{label}</p>
-            </a>
-        '''
-
-    # ★ ここで一気にHTMLとして出力（st.markdownを1回にするのがコツ）
-    btn_html = f'''
+    # ★ ここが重要：全体をひとつの st.markdown で出力する
+    full_html = f'''
         <div class="button-grid">
-            {create_button_html(img3, "📄", "メンテナンス<br>入力", "https://docs.google.com/forms/d/e/1FAIpQLSc4E3L_UJkVxMMSTOYgcw3SJyoBixHoJfhe0WC-x1wbK6lsHw/viewform?usp=sharing")}
-            {create_button_html(img4, "📋", "メンテナンス<br>確認", st.session_state.user_url, st.session_state.needs_alert)}
-            {create_button_html(img5, "📢", "キャンペーン<br>入力", "https://www.google.com")}
-            {create_button_html(img7, "🎓", "勉強会<br>資料", "https://drive.google.com/drive/folders/1vZE__7Th8RuVtkNQpG-rAZSBtAvG7cTX")}
+            <a class="btn-item" href="https://docs.google.com/forms/d/e/1FAIpQLSc4E3L_UJkVxMMSTOYgcw3SJyoBixHoJfhe0WC-x1wbK6lsHw/viewform?usp=sharing" target="_blank">
+                {html_btn1}<p class="btn-text">メンテナンス<br>入力</p>
+            </a>
+            <a class="btn-item" href="{st.session_state.user_url}" target="_blank">
+                {html_btn2}<p class="btn-text">メンテナンス<br>確認</p>
+            </a>
+            <a class="btn-item" href="https://www.google.com" target="_blank">
+                {html_btn3}<p class="btn-text">キャンペーン<br>入力</p>
+            </a>
+            <a class="btn-item" href="https://drive.google.com/drive/folders/1vZE__7Th8RuVtkNQpG-rAZSBtAvG7cTX" target="_blank">
+                {html_btn4}<p class="btn-text">勉強会<br>資料</p>
+            </a>
         </div>
     '''
-    st.markdown(btn_html, unsafe_allow_html=True)
+    st.markdown(full_html, unsafe_allow_html=True)
 
     st.write("---")
     if os.path.exists("6.png"):
@@ -137,14 +128,18 @@ def login_screen():
                 st.session_state.login_status = True
                 st.session_state.user_name = user_match.get('担当者名')
                 st.session_state.user_url = user_match.get('URL')
-                f_val = list(user_match.values())[5] if len(user_match) >= 6 else "0"
-                try: st.session_state.needs_alert = float(f_val) != 0
-                except: st.session_state.needs_alert = str(f_val).strip() != "" and str(f_val).strip() != "0"
+                # F列(0から数えて5番目)が「0」以外なら赤枠
+                vals = list(user_match.values())
+                f_val = vals[5] if len(vals) >= 6 else "0"
+                try:
+                    st.session_state.needs_alert = (float(f_val) != 0)
+                except:
+                    st.session_state.needs_alert = (str(f_val).strip() != "0" and str(f_val).strip() != "")
                 st.rerun()
             else:
-                st.error("担当者コードまたはパスワードが正しくありません")
+                st.error("コードまたはパスワードが違います")
 
-# --- 起動処理 ---
+# --- 実行 ---
 if 'login_status' not in st.session_state: st.session_state.login_status = False
 if st.session_state.login_status:
     main_screen()
