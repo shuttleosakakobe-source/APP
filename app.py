@@ -38,8 +38,9 @@ def get_img_html(file_name, emoji, alert=False, width="100%"):
         with open(file_name, "rb") as f:
             data = base64.b64encode(f.read()).decode()
         img_code = f'data:image/png;base64,{data}'
-        return f'<img src="{img_code}" style="width:{width}; aspect-ratio:1/1; object-fit:contain; border-radius:15px; border:{border}; {shadow}">'
-    return f'<div style="width:{width}; aspect-ratio:1/1; background:#f0f2f6; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:40px; border:{border}; {shadow}">{emoji}</div>'
+        # display: block; margin: 0 auto; で中央寄せを確実に
+        return f'<img src="{img_code}" style="width:{width}; aspect-ratio:1/1; object-fit:contain; border-radius:15px; border:{border}; {shadow}; display: block; margin: 0 auto;">'
+    return f'<div style="width:{width}; aspect-ratio:1/1; background:#f0f2f6; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:40px; border:{border}; {shadow}; margin: 0 auto;">{emoji}</div>'
 
 # --- 4. ログイン維持用関数 ---
 def set_login_storage(name, url, alert, role):
@@ -66,10 +67,13 @@ def main_screen():
         .button-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 15px 0; }
         @media (max-width: 600px) { .button-grid { grid-template-columns: repeat(2, 1fr); } }
         .btn-item { text-align: center; text-decoration: none; display: block; color: black !important; }
-        .btn-text { font-size: 12px; font-weight: bold; margin-top: 6px; line-height: 1.2; }
+        .btn-text { font-size: 12px; font-weight: bold; margin-top: 6px; line-height: 1.2; text-align: center; width: 100%; }
         footer {visibility: hidden;}
         hr { margin: 1.2rem 0 !important; }
-        .alert-text { color: red; font-weight: bold; font-size: 14px; margin-bottom: 5px; display: block; }
+        .alert-text { color: red; font-weight: bold; font-size: 14px; margin-bottom: 8px; display: block; text-align: center; }
+        
+        /* 管理者メニュー用のスタイル調整 */
+        .admin-box { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -95,7 +99,6 @@ def main_screen():
 
     # 管理者エリア
     if st.session_state.user_role == "1":
-        # 1. メンテナンスチェックのデータ確認
         check_sheet_rows = load_sheet_data(gid="1552856942")
         check_alert = False
         if check_sheet_rows and len(check_sheet_rows) >= 2:
@@ -103,25 +106,30 @@ def main_screen():
             if any(cell.strip() != "" for cell in target_cells):
                 check_alert = True
         
-        # 2. 未処理スタッフの抽出
         alert_rows = []
         for row in data:
             vals = list(row.values())
             if len(vals) >= 6 and str(vals[5]).strip() not in ["0", "", "None"]:
                 alert_rows.append({"name": str(vals[1]), "url": str(vals[3])})
 
-        # ボタンまたはリストがある時だけ表示（見出しは削除）
         if check_alert or alert_rows:
-            st.write("") # 少しだけ余白
-            col_admin1, col_admin2 = st.columns([1, 2])
+            st.write("") 
+            # カラム比率を少し調整して中央に寄せやすくする
+            col_admin1, col_admin2 = st.columns([1.2, 2])
             
-            # 左側：メンテナンスチェックボタン
             with col_admin1:
-                c_btn = get_img_html("8.png", "🔍", alert=check_alert, width="100px")
+                # 文字のズレを防ぐため div で囲んで text-align: center を適用
+                c_btn = get_img_html("8.png", "🔍", alert=check_alert, width="90px")
                 check_url = "https://docs.google.com/spreadsheets/d/1EofzMjd3dAq8sRCdQXpxw3_-T1VDWpd-aDrvxWD4fYc/edit?gid=1552856942#gid=1552856942"
-                st.markdown(f'<a href="{check_url}" target="_blank" style="text-decoration:none;">{c_btn}<p class="btn-text" style="text-align:center;">メンテナンス<br>チェック</p></a>', unsafe_allow_html=True)
+                st.markdown(f'''
+                    <div class="admin-box">
+                        <a href="{check_url}" target="_blank" style="text-decoration:none; color:black;">
+                            {c_btn}
+                            <p class="btn-text">メンテナンス<br>チェック</p>
+                        </a>
+                    </div>
+                ''', unsafe_allow_html=True)
             
-            # 右側：未処理リスト（いる時だけ表示）
             with col_admin2:
                 if alert_rows:
                     st.markdown('<span class="alert-text">⚠️ メンテナンス未処理</span>', unsafe_allow_html=True)
