@@ -71,7 +71,6 @@ def main_screen():
     if os.path.exists("1.png"):
         st.image("1.png", use_container_width=True)
 
-    # データ読み込み（お知らせ用＆管理者機能用）
     data = load_sheet_data()
     announcement = data[0].get('お知らせ', '安全運転でお願いします') if data else "安全運転でお願いします"
     
@@ -82,7 +81,6 @@ def main_screen():
         </div>
     ''', unsafe_allow_html=True)
 
-    # 一般ボタン
     html_btn1 = get_img_html("3.png", "📄")
     html_btn2 = get_img_html("4.png", "📋", alert=st.session_state.needs_alert)
     html_btn3 = get_img_html("5.png", "📢")
@@ -98,30 +96,22 @@ def main_screen():
     '''
     st.markdown(full_html, unsafe_allow_html=True)
 
-    # --- 管理者専用機能 ---
     if st.session_state.user_role == "1" and data:
         st.write("---")
         st.markdown("<p style='font-size:12px; font-weight:bold; color:red; margin-bottom:0px;'>⚠️ 管理者メニュー：メンテナンス異常一覧</p>", unsafe_allow_html=True)
-        
-        # F列(index 5)が0以外かつURL(index 3)がある行を抽出
         alert_rows = []
         for row in data:
             vals = list(row.values())
             if len(vals) >= 6:
                 f_val = str(vals[5]).strip()
                 d_url = str(vals[3]).strip()
-                name = str(vals[1]).strip() # B列:担当者名
+                name = str(vals[1]).strip()
                 if f_val != "0" and f_val != "" and d_url.startswith("http"):
                     alert_rows.append({"name": name, "url": d_url})
-        
         if alert_rows:
             options = [f"{r['name']} さんの異常を確認" for r in alert_rows]
             selected = st.selectbox("対象者を選択してください", options, label_visibility="collapsed")
-            
-            # 選択された人のURLを取得
-            selected_index = options.index(selected)
-            target_url = alert_rows[selected_index]['url']
-            
+            target_url = alert_rows[options.index(selected)]['url']
             st.link_button(f"👉 {selected}を開く", target_url, use_container_width=True)
         else:
             st.info("現在、メンテナンス異常のスタッフはいません。")
@@ -134,22 +124,28 @@ def main_screen():
         st.session_state.clear()
         st.rerun()
 
-# --- 6. 実行・ログインロジック ---
+# --- 6. ログインチェック・自動ログインロジック ---
 if 'login_status' not in st.session_state:
     st.session_state.login_status = False
 
-# 自動ログイン試行
+# ブラウザから情報を取得
 stored_name, stored_url, stored_alert, stored_role = get_login_storage()
+
+# 情報を読み込めた場合のセッション反映（PC版での不具合対策）
 if stored_name and not st.session_state.login_status:
+    # 読み込んだ瞬間にセッションを書き換え
     st.session_state.login_status = True
     st.session_state.user_name = str(stored_name)
     st.session_state.user_url = str(stored_url)
     st.session_state.needs_alert = (str(stored_alert) == 'True')
     st.session_state.user_role = str(stored_role)
+    st.rerun() # ここで再起動させることでメイン画面を確実に出す
 
+# 画面表示の分岐
 if st.session_state.login_status:
     main_screen()
 else:
+    # ログイン画面
     st.markdown("<style>header {visibility: hidden;} .block-container {padding-top: 1rem !important;}</style>", unsafe_allow_html=True)
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
     st.markdown("<h3 style='text-align: center;'>ログイン</h3>", unsafe_allow_html=True)
@@ -165,15 +161,10 @@ else:
                 st.session_state.login_status = True
                 st.session_state.user_name = user.get('担当者名')
                 st.session_state.user_url = user.get('URL')
-                
-                # F列判定
                 alert_flag = (str(vals[5]).strip() != "0" and str(vals[5]).strip() != "") if len(vals) >= 6 else False
                 st.session_state.needs_alert = alert_flag
-                
-                # G列判定（管理者:1, 一般:2）
                 role = str(vals[6]).strip() if len(vals) >= 7 else "2"
                 st.session_state.user_role = role
-                
                 set_login_storage(st.session_state.user_name, st.session_state.user_url, alert_flag, role)
                 st.rerun()
             else:
