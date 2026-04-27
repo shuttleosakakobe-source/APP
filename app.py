@@ -36,38 +36,28 @@ def get_img_html(file_name, emoji, alert=False):
     return f'<div style="width:100%; aspect-ratio:1/1; background:#f0f2f6; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:40px; border:{border}; {shadow}">{emoji}</div>'
 
 # --- 4. ログイン維持用関数 ---
-def set_login_storage(name, url, alert):
+def set_login_storage(name, url, alert, role):
     st_javascript(f"localStorage.setItem('shuttle_user_name', '{name}');")
     st_javascript(f"localStorage.setItem('shuttle_user_url', '{url}');")
     st_javascript(f"localStorage.setItem('shuttle_needs_alert', '{alert}');")
+    st_javascript(f"localStorage.setItem('shuttle_user_role', '{role}');")
 
 def get_login_storage():
     name = st_javascript("localStorage.getItem('shuttle_user_name');")
     url = st_javascript("localStorage.getItem('shuttle_user_url');")
     alert = st_javascript("localStorage.getItem('shuttle_needs_alert');")
-    return name, url, alert
+    role = st_javascript("localStorage.getItem('shuttle_user_role');")
+    return name, url, alert, role
 
 # --- 5. メイン画面の表示 ---
 def main_screen():
-    # 余白削減CSS
     st.markdown("""
         <style>
         header {visibility: hidden; height: 0px !important;}
-        .block-container {
-            padding-top: 0rem !important;
-            padding-bottom: 0rem !important;
-            max-width: 500px;
-        }
+        .block-container { padding-top: 0rem !important; padding-bottom: 0rem !important; max-width: 500px; }
         [data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
         .stApp { background-color: white; }
-        .user-label { 
-            text-align: right; 
-            font-size: 13px; 
-            color: #666; 
-            font-weight: bold; 
-            margin-top: 5px;
-            margin-bottom: 15px; 
-        }
+        .user-label { text-align: right; font-size: 13px; color: #666; font-weight: bold; margin-top: 5px; margin-bottom: 15px; }
         .button-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 5px; }
         @media (max-width: 600px) { .button-grid { grid-template-columns: repeat(2, 1fr); } }
         .btn-item { text-align: center; text-decoration: none; display: block; }
@@ -76,16 +66,15 @@ def main_screen():
         </style>
     """, unsafe_allow_html=True)
 
-    # ユーザー名
     st.markdown(f"<p class='user-label'>👤 {st.session_state.user_name} さん</p>", unsafe_allow_html=True)
     
-    # ロゴ
     if os.path.exists("1.png"):
         st.image("1.png", use_container_width=True)
 
-    # お知らせ
+    # データ読み込み（お知らせ用＆管理者機能用）
     data = load_sheet_data()
     announcement = data[0].get('お知らせ', '安全運転でお願いします') if data else "安全運転でお願いします"
+    
     st.markdown(f'''
         <div style="background-color:#fffbe6; border:2px solid #ffe58f; padding:6px; border-radius:10px; display:flex; align-items:center; margin-bottom:5px;">
             <span style="font-size:16px; margin-right:8px;">🔔</span>
@@ -93,37 +82,56 @@ def main_screen():
         </div>
     ''', unsafe_allow_html=True)
 
-    # ボタン用HTML
+    # 一般ボタン
     html_btn1 = get_img_html("3.png", "📄")
     html_btn2 = get_img_html("4.png", "📋", alert=st.session_state.needs_alert)
     html_btn3 = get_img_html("5.png", "📢")
     html_btn4 = get_img_html("image_d3349a.png", "🎓")
 
-    # グリッド表示 (ここがエラーの原因箇所でした)
     full_html = f'''
         <div class="button-grid">
-            <a class="btn-item" href="https://docs.google.com/forms/d/e/1FAIpQLSc4E3L_UJkVxMMSTOYgcw3SJyoBixHoJfhe0WC-x1wbK6lsHw/viewform?usp=sharing" target="_blank">
-                {html_btn1}<p class="btn-text">メンテナンス<br>入力</p>
-            </a>
-            <a class="btn-item" href="{st.session_state.user_url}" target="_blank">
-                {html_btn2}<p class="btn-text">メンテナンス<br>確認</p>
-            </a>
-            <a class="btn-item" href="https://www.google.com" target="_blank">
-                {html_btn3}<p class="btn-text">キャンペーン<br>入力</p>
-            </a>
-            <a class="btn-item" href="https://drive.google.com/drive/folders/1vZE__7Th8RuVtkNQpG-rAZSBtAvG7cTX" target="_blank">
-                {html_btn4}<p class="btn-text">勉強会<br>資料</p>
-            </a>
+            <a class="btn-item" href="https://docs.google.com/forms/d/e/1FAIpQLSc4E3L_UJkVxMMSTOYgcw3SJyoBixHoJfhe0WC-x1wbK6lsHw/viewform?usp=sharing" target="_blank">{html_btn1}<p class="btn-text">メンテナンス<br>入力</p></a>
+            <a class="btn-item" href="{st.session_state.user_url}" target="_blank">{html_btn2}<p class="btn-text">メンテナンス<br>確認</p></a>
+            <a class="btn-item" href="https://www.google.com" target="_blank">{html_btn3}<p class="btn-text">キャンペーン<br>入力</p></a>
+            <a class="btn-item" href="https://drive.google.com/drive/folders/1vZE__7Th8RuVtkNQpG-rAZSBtAvG7cTX" target="_blank">{html_btn4}<p class="btn-text">勉強会<br>資料</p></a>
         </div>
     '''
     st.markdown(full_html, unsafe_allow_html=True)
+
+    # --- 管理者専用機能 ---
+    if st.session_state.user_role == "1" and data:
+        st.write("---")
+        st.markdown("<p style='font-size:12px; font-weight:bold; color:red; margin-bottom:0px;'>⚠️ 管理者メニュー：メンテナンス異常一覧</p>", unsafe_allow_html=True)
+        
+        # F列(index 5)が0以外かつURL(index 3)がある行を抽出
+        alert_rows = []
+        for row in data:
+            vals = list(row.values())
+            if len(vals) >= 6:
+                f_val = str(vals[5]).strip()
+                d_url = str(vals[3]).strip()
+                name = str(vals[1]).strip() # B列:担当者名
+                if f_val != "0" and f_val != "" and d_url.startswith("http"):
+                    alert_rows.append({"name": name, "url": d_url})
+        
+        if alert_rows:
+            options = [f"{r['name']} さんの異常を確認" for r in alert_rows]
+            selected = st.selectbox("対象者を選択してください", options, label_visibility="collapsed")
+            
+            # 選択された人のURLを取得
+            selected_index = options.index(selected)
+            target_url = alert_rows[selected_index]['url']
+            
+            st.link_button(f"👉 {selected}を開く", target_url, use_container_width=True)
+        else:
+            st.info("現在、メンテナンス異常のスタッフはいません。")
 
     if os.path.exists("6.png"):
         st.image("6.png", width=110)
     
     if st.sidebar.button("ログアウト"):
         st_javascript("localStorage.clear();")
-        st.session_state.login_status = False
+        st.session_state.clear()
         st.rerun()
 
 # --- 6. 実行・ログインロジック ---
@@ -131,34 +139,42 @@ if 'login_status' not in st.session_state:
     st.session_state.login_status = False
 
 # 自動ログイン試行
-stored_name, stored_url, stored_alert = get_login_storage()
+stored_name, stored_url, stored_alert, stored_role = get_login_storage()
 if stored_name and not st.session_state.login_status:
     st.session_state.login_status = True
     st.session_state.user_name = str(stored_name)
     st.session_state.user_url = str(stored_url)
     st.session_state.needs_alert = (str(stored_alert) == 'True')
+    st.session_state.user_role = str(stored_role)
 
 if st.session_state.login_status:
     main_screen()
 else:
     st.markdown("<style>header {visibility: hidden;} .block-container {padding-top: 1rem !important;}</style>", unsafe_allow_html=True)
-    if os.path.exists("1.png"):
-        st.image("1.png", use_container_width=True)
+    if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
     st.markdown("<h3 style='text-align: center;'>ログイン</h3>", unsafe_allow_html=True)
     u_code = st.text_input("担当者コード", key="login_code").strip()
     u_pass = st.text_input("パスワード", type="password", key="login_pass").strip()
+    
     if st.button("ログイン", use_container_width=True):
         data = load_sheet_data()
         if data:
             user = next((row for row in data if str(row.get('担当者コード')).strip() == u_code and str(row.get('パスワード')).strip() == u_pass), None)
             if user:
+                vals = list(user.values())
                 st.session_state.login_status = True
                 st.session_state.user_name = user.get('担当者名')
                 st.session_state.user_url = user.get('URL')
-                vals = list(user.values())
+                
+                # F列判定
                 alert_flag = (str(vals[5]).strip() != "0" and str(vals[5]).strip() != "") if len(vals) >= 6 else False
                 st.session_state.needs_alert = alert_flag
-                set_login_storage(st.session_state.user_name, st.session_state.user_url, alert_flag)
+                
+                # G列判定（管理者:1, 一般:2）
+                role = str(vals[6]).strip() if len(vals) >= 7 else "2"
+                st.session_state.user_role = role
+                
+                set_login_storage(st.session_state.user_name, st.session_state.user_url, alert_flag, role)
                 st.rerun()
             else:
-                st.error("担当者コードまたはパスワードが正しくありません")
+                st.error("ログイン情報が正しくありません")
