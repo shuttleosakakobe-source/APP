@@ -25,7 +25,7 @@ def load_sheet_data():
     except:
         return None
 
-# --- 画像をHTML化する関数 ---
+# --- 画像をHTML化 ---
 def get_img_html(file_name, emoji, alert=False):
     border = "5px solid red" if alert else "5px solid transparent"
     shadow = "box-shadow: 0 0 10px red;" if alert else ""
@@ -49,48 +49,44 @@ def get_login_storage():
 
 # --- メイン画面 ---
 def main_screen():
-    # ★ 余白を極限まで削るCSS
+    # CSS調整：最上部を詰め、名前の下に余白を作る
     st.markdown("""
         <style>
-        /* 1. ヘッダー全体を非表示（デプロイボタンなど） */
         header {visibility: hidden; height: 0px !important;}
-        
-        /* 2. メインコンテンツの余白をゼロにする */
         .block-container {
             padding-top: 0rem !important;
             padding-bottom: 0rem !important;
-            padding-left: 1rem !important;
-            padding-right: 1rem !important;
             max-width: 500px;
         }
-        
-        /* 3. Streamlit固有の要素間の隙間（Gap）を詰める */
-        [data-testid="stVerticalBlock"] {
-            gap: 0.5rem !important;
-        }
-
+        [data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
         .stApp { background-color: white; }
-        .user-label { text-align: right; font-size: 13px; color: #666; font-weight: bold; margin-bottom: 0px; }
+        
+        /* ユーザー名のラベル：下に少し余白(margin-bottom)を追加 */
+        .user-label { 
+            text-align: right; 
+            font-size: 13px; 
+            color: #666; 
+            font-weight: bold; 
+            margin-top: 5px;
+            margin-bottom: 15px; 
+        }
         
         .button-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 5px; }
         @media (max-width: 600px) { .button-grid { grid-template-columns: repeat(2, 1fr); } }
-        
         .btn-item { text-align: center; text-decoration: none; display: block; }
         .btn-text { color: black; font-size: 12px; font-weight: bold; margin-top: 3px; line-height: 1.2; }
-        
-        /* 不要な余白を作る要素を削除 */
-        #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
         </style>
     """, unsafe_allow_html=True)
 
-    # ユーザー名を表示（一番上）
+    # 1. ユーザー名（一番上）
     st.markdown(f"<p class='user-label'>👤 {st.session_state.user_name} さん</p>", unsafe_allow_html=True)
     
+    # 2. メインロゴ（1.png）
     if os.path.exists("1.png"):
         st.image("1.png", use_container_width=True)
 
-    # お知らせ
+    # 3. お知らせ
     data = load_sheet_data()
     announcement = data[0].get('お知らせ', '安全運転でお願いします') if data else "安全運転でお願いします"
     st.markdown(f'''
@@ -100,7 +96,7 @@ def main_screen():
         </div>
     ''', unsafe_allow_html=True)
 
-    # ボタンHTML生成
+    # 4. ボタン生成
     html_btn1 = get_img_html("3.png", "📄")
     html_btn2 = get_img_html("4.png", "📋", alert=st.session_state.needs_alert)
     html_btn3 = get_img_html("5.png", "📢")
@@ -108,61 +104,7 @@ def main_screen():
 
     full_html = f'''
         <div class="button-grid">
-            <a class="btn-item" href="https://docs.google.com/forms/d/e/1FAIpQLSc4E3L_UJkVxMMSTOYgcw3SJyoBixHoJfhe0WC-x1wbK6lsHw/viewform?usp=sharing" target="_blank">
-                {html_btn1}<p class="btn-text">メンテナンス<br>入力</p>
-            </a>
-            <a class="btn-item" href="{st.session_state.user_url}" target="_blank">
-                {html_btn2}<p class="btn-text">メンテナンス<br>確認</p>
-            </a>
-            <a class="btn-item" href="https://www.google.com" target="_blank">
-                {html_btn3}<p class="btn-text">キャンペーン<br>入力</p>
-            </a>
-            <a class="btn-item" href="https://drive.google.com/drive/folders/1vZE__7Th8RuVtkNQpG-rAZSBtAvG7cTX" target="_blank">
-                {html_btn4}<p class="btn-text">勉強会<br>資料</p>
-            </a>
-        </div>
-    '''
-    st.markdown(full_html, unsafe_allow_html=True)
-
-    # 下部のロゴとログアウト
-    if os.path.exists("6.png"):
-        st.image("6.png", width=110)
-    
-    if st.sidebar.button("ログアウト"):
-        st_javascript("localStorage.clear();")
-        st.session_state.login_status = False
-        st.rerun()
-
-# --- 起動ロジック（前と同じ） ---
-if 'login_status' not in st.session_state: st.session_state.login_status = False
-stored_name, stored_url, stored_alert = get_login_storage()
-if stored_name and not st.session_state.login_status:
-    st.session_state.login_status = True
-    st.session_state.user_name = stored_name
-    st.session_state.user_url = stored_url
-    st.session_state.needs_alert = (stored_alert == 'True')
-
-if st.session_state.login_status:
-    main_screen()
-else:
-    # ログイン画面の余白も削減
-    st.markdown("<style>header {visibility: hidden;} .block-container {padding-top: 1rem !important;}</style>", unsafe_allow_html=True)
-    if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
-    st.markdown("<h3 style='text-align: center;'>ログイン</h3>", unsafe_allow_html=True)
-    u_code = st.text_input("担当者コード").strip()
-    u_pass = st.text_input("パスワード", type="password").strip()
-    if st.button("ログイン", use_container_width=True):
-        data = load_sheet_data()
-        if data:
-            user = next((row for row in data if str(row.get('担当者コード')).strip() == u_code and str(row.get('パスワード')).strip() == u_pass), None)
-            if user:
-                st.session_state.login_status = True
-                st.session_state.user_name = user.get('担当者名')
-                st.session_state.user_url = user.get('URL')
-                vals = list(user.values())
-                alert_flag = (str(vals[5]).strip() != "0" and str(vals[5]).strip() != "") if len(vals) >= 6 else False
-                st.session_state.needs_alert = alert_flag
-                set_login_storage(st.session_state.user_name, st.session_state.user_url, alert_flag)
-                st.rerun()
-            else:
-                st.error("入力内容に誤りがあります")
+            <a class="btn-item" href="https://docs.google.com/forms/d/e/1FAIpQLSc4E3L_UJkVxMMSTOYgcw3SJyoBixHoJfhe0WC-x1wbK6lsHw/viewform?usp=sharing" target="_blank">{html_btn1}<p class="btn-text">メンテナンス<br>入力</p></a>
+            <a class="btn-item" href="{st.session_state.user_url}" target="_blank">{html_btn2}<p class="btn-text">メンテナンス<br>確認</p></a>
+            <a class="btn-item" href="https://www.google.com" target="_blank">{html_btn3}<p class="btn-text">キャンペーン<br>入力</p></a>
+            <a class="btn-item" href="https
