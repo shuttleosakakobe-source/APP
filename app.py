@@ -49,28 +49,42 @@ def get_login_storage():
 
 # --- メイン画面 ---
 def main_screen():
-    # ★ 上部の余白を削るためのCSS
+    # ★ 余白を極限まで削るCSS
     st.markdown("""
         <style>
-        /* ヘッダーとメインコンテンツの隙間を消す */
-        .stAppHeader { background-color: rgba(0,0,0,0); }
-        .block-container {
-            padding-top: 1rem !important;
-            padding-bottom: 0rem !important;
-            max-width: 500px; /* PCでの表示幅を少し絞ってアプリらしく */
-        }
-        .stApp { background-color: white; }
-        .user-label { text-align: right; font-size: 13px; color: #666; font-weight: bold; margin-bottom: 5px; }
+        /* 1. ヘッダー全体を非表示（デプロイボタンなど） */
+        header {visibility: hidden; height: 0px !important;}
         
-        .button-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px; }
+        /* 2. メインコンテンツの余白をゼロにする */
+        .block-container {
+            padding-top: 0rem !important;
+            padding-bottom: 0rem !important;
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+            max-width: 500px;
+        }
+        
+        /* 3. Streamlit固有の要素間の隙間（Gap）を詰める */
+        [data-testid="stVerticalBlock"] {
+            gap: 0.5rem !important;
+        }
+
+        .stApp { background-color: white; }
+        .user-label { text-align: right; font-size: 13px; color: #666; font-weight: bold; margin-bottom: 0px; }
+        
+        .button-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 5px; }
         @media (max-width: 600px) { .button-grid { grid-template-columns: repeat(2, 1fr); } }
         
         .btn-item { text-align: center; text-decoration: none; display: block; }
-        .btn-text { color: black; font-size: 12px; font-weight: bold; margin-top: 5px; line-height: 1.2; }
+        .btn-text { color: black; font-size: 12px; font-weight: bold; margin-top: 3px; line-height: 1.2; }
+        
+        /* 不要な余白を作る要素を削除 */
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
         </style>
     """, unsafe_allow_html=True)
 
-    # ユーザー名を表示
+    # ユーザー名を表示（一番上）
     st.markdown(f"<p class='user-label'>👤 {st.session_state.user_name} さん</p>", unsafe_allow_html=True)
     
     if os.path.exists("1.png"):
@@ -80,13 +94,13 @@ def main_screen():
     data = load_sheet_data()
     announcement = data[0].get('お知らせ', '安全運転でお願いします') if data else "安全運転でお願いします"
     st.markdown(f'''
-        <div style="background-color:#fffbe6; border:2px solid #ffe58f; padding:8px; border-radius:10px; display:flex; align-items:center; margin-bottom:10px;">
-            <span style="font-size:18px; margin-right:8px;">🔔</span>
+        <div style="background-color:#fffbe6; border:2px solid #ffe58f; padding:6px; border-radius:10px; display:flex; align-items:center; margin-bottom:5px;">
+            <span style="font-size:16px; margin-right:8px;">🔔</span>
             <marquee scrollamount="5" style="color:red; font-weight:bold; font-size:16px;">{announcement}</marquee>
         </div>
     ''', unsafe_allow_html=True)
 
-    # ボタン作成
+    # ボタンHTML生成
     html_btn1 = get_img_html("3.png", "📄")
     html_btn2 = get_img_html("4.png", "📋", alert=st.session_state.needs_alert)
     html_btn3 = get_img_html("5.png", "📢")
@@ -110,19 +124,17 @@ def main_screen():
     '''
     st.markdown(full_html, unsafe_allow_html=True)
 
-    st.write("---")
+    # 下部のロゴとログアウト
     if os.path.exists("6.png"):
-        st.image("6.png", width=120)
+        st.image("6.png", width=110)
     
     if st.sidebar.button("ログアウト"):
         st_javascript("localStorage.clear();")
         st.session_state.login_status = False
         st.rerun()
 
-# --- 起動ロジック ---
+# --- 起動ロジック（前と同じ） ---
 if 'login_status' not in st.session_state: st.session_state.login_status = False
-
-# 自動ログイン確認
 stored_name, stored_url, stored_alert = get_login_storage()
 if stored_name and not st.session_state.login_status:
     st.session_state.login_status = True
@@ -133,9 +145,10 @@ if stored_name and not st.session_state.login_status:
 if st.session_state.login_status:
     main_screen()
 else:
-    # ログイン画面
+    # ログイン画面の余白も削減
+    st.markdown("<style>header {visibility: hidden;} .block-container {padding-top: 1rem !important;}</style>", unsafe_allow_html=True)
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
-    st.markdown("<h3 style='text-align: center;'>業務アプリ ログイン</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center;'>ログイン</h3>", unsafe_allow_html=True)
     u_code = st.text_input("担当者コード").strip()
     u_pass = st.text_input("パスワード", type="password").strip()
     if st.button("ログイン", use_container_width=True):
@@ -152,4 +165,4 @@ else:
                 set_login_storage(st.session_state.user_name, st.session_state.user_url, alert_flag)
                 st.rerun()
             else:
-                st.error("コードまたはパスワードが正しくありません")
+                st.error("入力内容に誤りがあります")
