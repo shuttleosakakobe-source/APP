@@ -16,9 +16,7 @@ st.set_page_config(
 # --- 2. スプレッドシート取得関数 ---
 @st.cache_data(ttl=0)
 def load_sheet_data(gid="0"):
-    # 管理用シート or メンテナンスチェックシート(gid指定可能)
     base_url = "https://docs.google.com/spreadsheets/d/1cPgQ3Ej3P7JZPaxprFQnbnDkCatQ15lEHyF9C9tMgZ4/export?format=csv&gid="
-    # メンテナンスチェック用の別ファイルURL
     check_sheet_url = "https://docs.google.com/spreadsheets/d/1EofzMjd3dAq8sRCdQXpxw3_-T1VDWpd-aDrvxWD4fYc/export?format=csv&gid=1552856942"
     
     target_url = check_sheet_url if gid == "1552856942" else f"{base_url}{gid}"
@@ -27,7 +25,7 @@ def load_sheet_data(gid="0"):
         response = urllib.request.urlopen(target_url)
         content = response.read().decode('utf-8')
         f = io.StringIO(content)
-        reader = csv.reader(f) # ヘッダーなしで読むためreaderを使用
+        reader = csv.reader(f)
         return list(reader)
     except:
         return None
@@ -35,7 +33,6 @@ def load_sheet_data(gid="0"):
 # --- 3. 画像をHTML化する関数 ---
 def get_img_html(file_name, emoji, alert=False, width="100%"):
     border = "5px solid red" if alert else "5px solid transparent"
-    # アラート時はさらに赤く光らせるエフェクトを追加
     shadow = "box-shadow: 0 0 15px red; filter: drop-shadow(0 0 5px red);" if alert else ""
     if os.path.exists(file_name):
         with open(file_name, "rb") as f:
@@ -72,28 +69,22 @@ def main_screen():
         .btn-text { font-size: 12px; font-weight: bold; margin-top: 6px; line-height: 1.2; }
         footer {visibility: hidden;}
         hr { margin: 1.2rem 0 !important; }
+        .alert-text { color: red; font-weight: bold; font-size: 14px; margin-bottom: 5px; display: block; }
         </style>
     """, unsafe_allow_html=True)
 
-    # データ一括読み込み
     data_raw = load_sheet_data(gid="0")
-    # CSVの1行目はヘッダーなのでDict化
     header = data_raw[0]
     data = [dict(zip(header, row)) for row in data_raw[1:]]
     
-    # ユーザーの状態を最新化（F列）
     current_user_data = next((r for r in data if r.get('担当者名') == st.session_state.user_name), None)
     if current_user_data:
         vals = list(current_user_data.values())
         st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
 
-    # 👤 ユーザー名
     st.markdown(f"<p class='user-label'>👤 {st.session_state.user_name} さん</p>", unsafe_allow_html=True)
-    
-    # 🏠 ロゴ
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
 
-    # 🔔 お知らせ
     announcement = data[0].get('お知らせ', '安全運転でお願いします')
     st.markdown(f'''
         <div style="background-color:#fffbe6; border:2px solid #ffe58f; padding:10px; border-radius:10px; display:flex; align-items:center; margin-top: 5px;">
@@ -102,38 +93,45 @@ def main_screen():
         </div>
     ''', unsafe_allow_html=True)
 
-    # ⚠️ 管理者メニュー（お知らせの下）
+    # ⚠️ 管理者メニュー
     if st.session_state.user_role == "1":
-        st.markdown("<p style='font-size:13px; font-weight:bold; color:red; margin-top:10px; margin-bottom:5px;'>⚠️ 管理者メニュー：メンテナンス未処理一覧</p>", unsafe_allow_html=True)
-        
-        # 1. メンテナンスチェック用のアラート判定 (A2:J2)
+        # 1. メンテナンスチェックのデータ確認
         check_sheet_rows = load_sheet_data(gid="1552856942")
         check_alert = False
         if check_sheet_rows and len(check_sheet_rows) >= 2:
-            # 2行目（インデックス1）のA列〜J列（0〜9）を確認
             target_cells = check_sheet_rows[1][:10]
             if any(cell.strip() != "" for cell in target_cells):
                 check_alert = True
         
-        # 2. メンテナンスチェックボタン (画像8)
-        c_btn = get_img_html("8.png", "🔍", alert=check_alert, width="100px")
-        check_url = "https://docs.google.com/spreadsheets/d/1EofzMjd3dAq8sRCdQXpxw3_-T1VDWpd-aDrvxWD4fYc/edit?gid=1552856942#gid=1552856942"
-        
-        col_admin1, col_admin2 = st.columns([1, 3])
-        with col_admin1:
-            st.markdown(f'<a href="{check_url}" target="_blank" style="text-decoration:none;">{c_btn}<p class="btn-text" style="text-align:center;">メンテナンス<br>チェック</p></a>', unsafe_allow_html=True)
-        with col_admin2:
-            alert_rows = []
-            for row in data:
-                vals = list(row.values())
-                if len(vals) >= 6 and str(vals[5]).strip() not in ["0", "", "None"]:
-                    alert_rows.append({"name": str(vals[1]), "url": str(vals[3])})
-            if alert_rows:
-                opts = [f"{r['name']} さんの未処理を確認" for r in alert_rows]
-                sel = st.selectbox("対象者選択", opts, label_visibility="collapsed")
-                st.link_button(f"👉 {sel}を開く", alert_rows[opts.index(sel)]['url'], use_container_width=True)
-            else:
-                st.info("未処理スタッフはいません")
+        # 2. 未処理スタッフの抽出
+        alert_rows = []
+        for row in data:
+            vals = list(row.values())
+            if len(vals) >= 6 and str(vals[5]).strip() not in ["0", "", "None"]:
+                alert_rows.append({"name": str(vals[1]), "url": str(vals[3])})
+
+        # メンテナンスチェックボタン or 未処理スタッフがいる場合のみエリアを表示
+        if check_alert or alert_rows:
+            st.markdown("<p style='font-size:13px; font-weight:bold; color:red; margin-top:10px; margin-bottom:5px;'>⚠️ 管理者メニュー</p>", unsafe_allow_html=True)
+            
+            col_admin1, col_admin2 = st.columns([1, 2])
+            
+            # 左側：メンテナンスチェックボタン
+            with col_admin1:
+                if check_alert:
+                    st.markdown('<span class="alert-text">⚠️ 未チェック有り</span>', unsafe_allow_html=True)
+                
+                c_btn = get_img_html("8.png", "🔍", alert=check_alert, width="100px")
+                check_url = "https://docs.google.com/spreadsheets/d/1EofzMjd3dAq8sRCdQXpxw3_-T1VDWpd-aDrvxWD4fYc/edit?gid=1552856942#gid=1552856942"
+                st.markdown(f'<a href="{check_url}" target="_blank" style="text-decoration:none;">{c_btn}<p class="btn-text" style="text-align:center;">メンテナンス<br>チェック</p></a>', unsafe_allow_html=True)
+            
+            # 右側：未処理リスト（いる時だけ表示）
+            with col_admin2:
+                if alert_rows:
+                    st.markdown('<span class="alert-text">⚠️ メンテナンス未処理</span>', unsafe_allow_html=True)
+                    opts = [f"{r['name']} さん" for r in alert_rows]
+                    sel = st.selectbox("対象を選択", opts, label_visibility="collapsed")
+                    st.link_button(f"👉 確認を開く", alert_rows[opts.index(sel)]['url'], use_container_width=True)
 
     # 🔘 メインボタン 4つ
     b1 = get_img_html("3.png", "📄")
@@ -151,7 +149,6 @@ def main_screen():
     '''
     st.markdown(grid_html, unsafe_allow_html=True)
 
-    # 下部
     st.write("---")
     col1, col2 = st.columns([1, 1])
     with col1:
