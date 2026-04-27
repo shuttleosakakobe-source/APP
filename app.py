@@ -14,29 +14,35 @@ st.set_page_config(
 )
 
 # --- 2. スプレッドシート取得関数 ---
-# ttlを0に設定し、キャッシュを無効化することで常に最新データを取得します
 @st.cache_data(ttl=0)
-def load_sheet_data():
-    sheet_url = "https://docs.google.com/spreadsheets/d/1cPgQ3Ej3P7JZPaxprFQnbnDkCatQ15lEHyF9C9tMgZ4/export?format=csv&gid=0"
+def load_sheet_data(gid="0"):
+    # 管理用シート or メンテナンスチェックシート(gid指定可能)
+    base_url = "https://docs.google.com/spreadsheets/d/1cPgQ3Ej3P7JZPaxprFQnbnDkCatQ15lEHyF9C9tMgZ4/export?format=csv&gid="
+    # メンテナンスチェック用の別ファイルURL
+    check_sheet_url = "https://docs.google.com/spreadsheets/d/1EofzMjd3dAq8sRCdQXpxw3_-T1VDWpd-aDrvxWD4fYc/export?format=csv&gid=1552856942"
+    
+    target_url = check_sheet_url if gid == "1552856942" else f"{base_url}{gid}"
+    
     try:
-        response = urllib.request.urlopen(sheet_url)
+        response = urllib.request.urlopen(target_url)
         content = response.read().decode('utf-8')
         f = io.StringIO(content)
-        reader = csv.DictReader(f)
+        reader = csv.reader(f) # ヘッダーなしで読むためreaderを使用
         return list(reader)
     except:
         return None
 
 # --- 3. 画像をHTML化する関数 ---
-def get_img_html(file_name, emoji, alert=False):
+def get_img_html(file_name, emoji, alert=False, width="100%"):
     border = "5px solid red" if alert else "5px solid transparent"
-    shadow = "box-shadow: 0 0 10px red;" if alert else ""
+    # アラート時はさらに赤く光らせるエフェクトを追加
+    shadow = "box-shadow: 0 0 15px red; filter: drop-shadow(0 0 5px red);" if alert else ""
     if os.path.exists(file_name):
         with open(file_name, "rb") as f:
             data = base64.b64encode(f.read()).decode()
         img_code = f'data:image/png;base64,{data}'
-        return f'<img src="{img_code}" style="width:100%; aspect-ratio:1/1; object-fit:contain; border-radius:15px; border:{border}; {shadow}">'
-    return f'<div style="width:100%; aspect-ratio:1/1; background:#f0f2f6; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:40px; border:{border}; {shadow}">{emoji}</div>'
+        return f'<img src="{img_code}" style="width:{width}; aspect-ratio:1/1; object-fit:contain; border-radius:15px; border:{border}; {shadow}">'
+    return f'<div style="width:{width}; aspect-ratio:1/1; background:#f0f2f6; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:40px; border:{border}; {shadow}">{emoji}</div>'
 
 # --- 4. ログイン維持用関数 ---
 def set_login_storage(name, url, alert, role):
@@ -57,11 +63,7 @@ def main_screen():
     st.markdown("""
         <style>
         header {visibility: hidden; height: 0px !important;}
-        .block-container { 
-            padding-top: 1.5rem !important; 
-            padding-bottom: 2rem !important; 
-            max-width: 500px; 
-        }
+        .block-container { padding-top: 1.5rem !important; padding-bottom: 2rem !important; max-width: 500px; }
         [data-testid="stVerticalBlock"] { gap: 1.2rem !important; }
         .user-label { text-align: right; font-size: 13px; color: #666; font-weight: bold; margin-bottom: 5px; }
         .button-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 15px 0; }
@@ -73,15 +75,14 @@ def main_screen():
         </style>
     """, unsafe_allow_html=True)
 
-    # 常に最新のスプレッドシート情報を読み込み
-    data = load_sheet_data()
+    # データ一括読み込み
+    data_raw = load_sheet_data(gid="0")
+    # CSVの1行目はヘッダーなのでDict化
+    header = data_raw[0]
+    data = [dict(zip(header, row)) for row in data_raw[1:]]
     
-    # ログイン中のユーザーの最新の「未処理状態(F列)」を確認
-    current_user_data = None
-    if data:
-        current_user_data = next((r for r in data if r.get('担当者名') == st.session_state.user_name), None)
-    
-    # 未処理フラグの更新反映
+    # ユーザーの状態を最新化（F列）
+    current_user_data = next((r for r in data if r.get('担当者名') == st.session_state.user_name), None)
     if current_user_data:
         vals = list(current_user_data.values())
         st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
@@ -89,12 +90,11 @@ def main_screen():
     # 👤 ユーザー名
     st.markdown(f"<p class='user-label'>👤 {st.session_state.user_name} さん</p>", unsafe_allow_html=True)
     
-    # 🏠 ロゴ (1.png)
-    if os.path.exists("1.png"):
-        st.image("1.png", use_container_width=True)
+    # 🏠 ロゴ
+    if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
 
     # 🔔 お知らせ
-    announcement = data[0].get('お知らせ', '安全運転でお願いします') if data else "安全運転でお願いします"
+    announcement = data[0].get('お知らせ', '安全運転でお願いします')
     st.markdown(f'''
         <div style="background-color:#fffbe6; border:2px solid #ffe58f; padding:10px; border-radius:10px; display:flex; align-items:center; margin-top: 5px;">
             <span style="font-size:16px; margin-right:8px;">🔔</span>
@@ -102,23 +102,40 @@ def main_screen():
         </div>
     ''', unsafe_allow_html=True)
 
-    # ⚠️ 管理者メニュー（未処理一覧）
-    if st.session_state.user_role == "1" and data:
+    # ⚠️ 管理者メニュー（お知らせの下）
+    if st.session_state.user_role == "1":
         st.markdown("<p style='font-size:13px; font-weight:bold; color:red; margin-top:10px; margin-bottom:5px;'>⚠️ 管理者メニュー：メンテナンス未処理一覧</p>", unsafe_allow_html=True)
-        alert_rows = []
-        for row in data:
-            vals = list(row.values())
-            if len(vals) >= 6 and str(vals[5]).strip() not in ["0", "", "None"]:
-                alert_rows.append({"name": str(vals[1]), "url": str(vals[3])})
         
-        if alert_rows:
-            opts = [f"{r['name']} さんの未処理を確認" for r in alert_rows]
-            sel = st.selectbox("対象者を選択してください", opts, label_visibility="collapsed")
-            st.link_button(f"👉 {sel}を開く", alert_rows[opts.index(sel)]['url'], use_container_width=True)
-        else:
-            st.info("現在、メンテナンス未処理のスタッフはいません。")
+        # 1. メンテナンスチェック用のアラート判定 (A2:J2)
+        check_sheet_rows = load_sheet_data(gid="1552856942")
+        check_alert = False
+        if check_sheet_rows and len(check_sheet_rows) >= 2:
+            # 2行目（インデックス1）のA列〜J列（0〜9）を確認
+            target_cells = check_sheet_rows[1][:10]
+            if any(cell.strip() != "" for cell in target_cells):
+                check_alert = True
+        
+        # 2. メンテナンスチェックボタン (画像8)
+        c_btn = get_img_html("8.png", "🔍", alert=check_alert, width="100px")
+        check_url = "https://docs.google.com/spreadsheets/d/1EofzMjd3dAq8sRCdQXpxw3_-T1VDWpd-aDrvxWD4fYc/edit?gid=1552856942#gid=1552856942"
+        
+        col_admin1, col_admin2 = st.columns([1, 3])
+        with col_admin1:
+            st.markdown(f'<a href="{check_url}" target="_blank" style="text-decoration:none;">{c_btn}<p class="btn-text" style="text-align:center;">メンテナンス<br>チェック</p></a>', unsafe_allow_html=True)
+        with col_admin2:
+            alert_rows = []
+            for row in data:
+                vals = list(row.values())
+                if len(vals) >= 6 and str(vals[5]).strip() not in ["0", "", "None"]:
+                    alert_rows.append({"name": str(vals[1]), "url": str(vals[3])})
+            if alert_rows:
+                opts = [f"{r['name']} さんの未処理を確認" for r in alert_rows]
+                sel = st.selectbox("対象者選択", opts, label_visibility="collapsed")
+                st.link_button(f"👉 {sel}を開く", alert_rows[opts.index(sel)]['url'], use_container_width=True)
+            else:
+                st.info("未処理スタッフはいません")
 
-    # 🔘 メインボタン（ここで最新の needs_alert を反映）
+    # 🔘 メインボタン 4つ
     b1 = get_img_html("3.png", "📄")
     b2 = get_img_html("4.png", "📋", alert=st.session_state.needs_alert)
     b3 = get_img_html("5.png", "📢")
@@ -134,12 +151,11 @@ def main_screen():
     '''
     st.markdown(grid_html, unsafe_allow_html=True)
 
-    # 🏁 下部：ロゴ2とログアウト
+    # 下部
     st.write("---")
     col1, col2 = st.columns([1, 1])
     with col1:
-        if os.path.exists("6.png"):
-            st.image("6.png", width=110)
+        if os.path.exists("6.png"): st.image("6.png", width=110)
     with col2:
         if st.button("🚪 ログアウト", use_container_width=True):
             st_javascript("localStorage.clear();")
@@ -147,11 +163,9 @@ def main_screen():
             st.session_state.logout_requested = True
             st.rerun()
 
-# --- 6. ログイン・自動ログイン制御 ---
-if 'login_status' not in st.session_state:
-    st.session_state.login_status = False
-if 'logout_requested' not in st.session_state:
-    st.session_state.logout_requested = False
+# --- 6. 実行ロジック ---
+if 'login_status' not in st.session_state: st.session_state.login_status = False
+if 'logout_requested' not in st.session_state: st.session_state.logout_requested = False
 
 if not st.session_state.login_status and not st.session_state.logout_requested:
     stored = get_login_storage()
@@ -166,23 +180,22 @@ if not st.session_state.login_status and not st.session_state.logout_requested:
 if st.session_state.login_status:
     main_screen()
 else:
-    # ログイン画面
-    st.markdown("<style>header {visibility: hidden;}</style>", unsafe_allow_html=True)
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
     u_code = st.text_input("担当者コード").strip()
     u_pass = st.text_input("パスワード", type="password").strip()
     if st.button("ログイン", use_container_width=True):
-        data = load_sheet_data()
-        user = next((r for r in data if str(r.get('担当者コード')).strip() == u_code and str(r.get('パスワード')).strip() == u_pass), None) if data else None
+        raw = load_sheet_data(gid="0")
+        h = raw[0]
+        rows = [dict(zip(h, r)) for r in raw[1:]]
+        user = next((r for r in rows if str(r.get('担当者コード')).strip() == u_code and str(r.get('パスワード')).strip() == u_pass), None)
         if user:
             vals = list(user.values())
             st.session_state.user_name = user.get('担当者名')
             st.session_state.user_url = user.get('URL')
-            st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
+            st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", ""])
             st.session_state.user_role = str(vals[6]).strip() if len(vals) >= 7 else "2"
             st.session_state.login_status = True
             st.session_state.logout_requested = False
             set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role)
             st.rerun()
-        else:
-            st.error("認証失敗")
+        else: st.error("認証失敗")
