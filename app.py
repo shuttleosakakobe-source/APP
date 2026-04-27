@@ -56,32 +56,56 @@ def main_screen():
     st.markdown("""
         <style>
         header {visibility: hidden; height: 0px !important;}
-        .block-container { padding-top: 0rem !important; padding-bottom: 0rem !important; max-width: 500px; }
-        [data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
-        .user-label { text-align: right; font-size: 13px; color: #666; font-weight: bold; margin-top: 5px; margin-bottom: 15px; }
-        .button-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 5px; }
+        .block-container { 
+            padding-top: 1rem !important; 
+            padding-bottom: 1rem !important; 
+            max-width: 500px; 
+        }
+        /* 各要素の上下間隔を少し広げる */
+        [data-testid="stVerticalBlock"] { gap: 1.2rem !important; }
+        
+        .user-label { 
+            text-align: right; 
+            font-size: 13px; 
+            color: #666; 
+            font-weight: bold; 
+            margin-bottom: 20px; 
+        }
+        .button-grid { 
+            display: grid; 
+            grid-template-columns: repeat(4, 1fr); 
+            gap: 12px; 
+            margin-top: 10px; 
+            margin-bottom: 10px;
+        }
         @media (max-width: 600px) { .button-grid { grid-template-columns: repeat(2, 1fr); } }
         .btn-item { text-align: center; text-decoration: none; display: block; color: black !important; }
-        .btn-text { font-size: 12px; font-weight: bold; margin-top: 3px; line-height: 1.2; }
+        .btn-text { font-size: 12px; font-weight: bold; margin-top: 5px; line-height: 1.2; }
         footer {visibility: hidden;}
+        
+        /* 区切り線の余白 */
+        hr { margin-top: 1.5rem !important; margin-bottom: 1.5rem !important; }
         </style>
     """, unsafe_allow_html=True)
 
+    # 1. ユーザー名
     st.markdown(f"<p class='user-label'>👤 {st.session_state.user_name} さん</p>", unsafe_allow_html=True)
     
+    # 2. ロゴ (1.png)
     if os.path.exists("1.png"):
         st.image("1.png", use_container_width=True)
 
+    # 3. お知らせ
     data = load_sheet_data()
     announcement = data[0].get('お知らせ', '安全運転でお願いします') if data else "安全運転でお願いします"
-    
     st.markdown(f'''
-        <div style="background-color:#fffbe6; border:2px solid #ffe58f; padding:6px; border-radius:10px; display:flex; align-items:center; margin-bottom:5px;">
+        <div style="background-color:#fffbe6; border:2px solid #ffe58f; padding:8px; border-radius:10px; display:flex; align-items:center; margin: 10px 0;">
             <span style="font-size:16px; margin-right:8px;">🔔</span>
             <marquee scrollamount="5" style="color:red; font-weight:bold; font-size:16px;">{announcement}</marquee>
         </div>
     ''', unsafe_allow_html=True)
 
+    # 4. ボタン表示
     b1 = get_img_html("3.png", "📄")
     b2 = get_img_html("4.png", "📋", alert=st.session_state.needs_alert)
     b3 = get_img_html("5.png", "📢")
@@ -97,39 +121,42 @@ def main_screen():
     '''
     st.markdown(grid_html, unsafe_allow_html=True)
 
+    # 5. 下部セクション (ロゴとログアウト)
+    st.write("---")
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if os.path.exists("6.png"):
+            st.image("6.png", width=110)
+    with col2:
+        if st.button("🚪 ログアウト", use_container_width=True):
+            st_javascript("localStorage.clear();")
+            st.session_state.login_status = False
+            st.session_state.logout_requested = True
+            st.rerun()
+
+    # 6. 管理者メニュー (画像2/6.png の下に配置)
     if st.session_state.user_role == "1" and data:
-        st.write("---")
-        st.markdown("<p style='font-size:12px; font-weight:bold; color:red;'>⚠️ 管理者メニュー</p>", unsafe_allow_html=True)
+        st.markdown("<div style='margin-top:20px;'></div>", unsafe_allow_html=True)
+        st.markdown("<p style='font-size:13px; font-weight:bold; color:red; margin-bottom:5px;'>⚠️ 管理者メニュー：メンテナンス異常一覧</p>", unsafe_allow_html=True)
         alert_rows = []
         for row in data:
             vals = list(row.values())
-            if len(vals) >= 6 and str(vals[5]).strip() != "0" and str(vals[5]).strip() != "":
+            if len(vals) >= 6 and str(vals[5]).strip() not in ["0", "", "None"]:
                 alert_rows.append({"name": str(vals[1]), "url": str(vals[3])})
+        
         if alert_rows:
             opts = [f"{r['name']} さんの異常を確認" for r in alert_rows]
             sel = st.selectbox("対象者選択", opts, label_visibility="collapsed")
             st.link_button(f"👉 {sel}を開く", alert_rows[opts.index(sel)]['url'], use_container_width=True)
-
-    st.write("---")
-    c1, c2 = st.columns([1, 1])
-    with c1:
-        if os.path.exists("6.png"): st.image("6.png", width=110)
-    with c2:
-        # 【修正】ログアウトボタンの動作を強化
-        if st.button("🚪 ログアウト", use_container_width=True):
-            st_javascript("localStorage.clear();") # ブラウザ保存を消去
-            st.session_state.login_status = False # セッション変数を即座にオフ
-            st.session_state.logout_requested = True # ログアウト要求フラグを立てる
-            st.rerun()
+        else:
+            st.info("現在、メンテナンス異常のスタッフはいません。")
 
 # --- 6. ログインロジック ---
-# 初回起動時のみ実行
 if 'login_status' not in st.session_state:
     st.session_state.login_status = False
 if 'logout_requested' not in st.session_state:
     st.session_state.logout_requested = False
 
-# ログアウト直後でない場合のみ、自動ログインを試行
 if not st.session_state.login_status and not st.session_state.logout_requested:
     stored = get_login_storage()
     if stored and str(stored[0]) not in ["None", "null", "0", "undefined", ""]:
@@ -140,17 +167,13 @@ if not st.session_state.login_status and not st.session_state.logout_requested:
         st.session_state.login_status = True
         st.rerun()
 
-# メイン画面表示
 if st.session_state.login_status:
     main_screen()
 else:
-    # ログイン画面
     st.markdown("<style>header {visibility: hidden;}</style>", unsafe_allow_html=True)
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
-    st.markdown("<h3 style='text-align: center;'>ログイン</h3>", unsafe_allow_html=True)
     u_code = st.text_input("担当者コード").strip()
     u_pass = st.text_input("パスワード", type="password").strip()
-    
     if st.button("ログイン", use_container_width=True):
         data = load_sheet_data()
         user = next((r for r in data if str(r.get('担当者コード')).strip() == u_code and str(r.get('パスワード')).strip() == u_pass), None) if data else None
@@ -161,7 +184,7 @@ else:
             st.session_state.needs_alert = (str(vals[5]).strip() != "0")
             st.session_state.user_role = str(vals[6]).strip() if len(vals) >= 7 else "2"
             st.session_state.login_status = True
-            st.session_state.logout_requested = False # ログイン成功したのでフラグを解除
+            st.session_state.logout_requested = False
             set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role)
             st.rerun()
         else:
