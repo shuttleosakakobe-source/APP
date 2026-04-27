@@ -93,7 +93,7 @@ def main_screen():
         </div>
     ''', unsafe_allow_html=True)
 
-    # ⚠️ 管理者メニュー
+    # 管理者エリア
     if st.session_state.user_role == "1":
         # 1. メンテナンスチェックのデータ確認
         check_sheet_rows = load_sheet_data(gid="1552856942")
@@ -110,17 +110,13 @@ def main_screen():
             if len(vals) >= 6 and str(vals[5]).strip() not in ["0", "", "None"]:
                 alert_rows.append({"name": str(vals[1]), "url": str(vals[3])})
 
-        # メンテナンスチェックボタン or 未処理スタッフがいる場合のみエリアを表示
+        # ボタンまたはリストがある時だけ表示（見出しは削除）
         if check_alert or alert_rows:
-            st.markdown("<p style='font-size:13px; font-weight:bold; color:red; margin-top:10px; margin-bottom:5px;'>⚠️ 管理者メニュー</p>", unsafe_allow_html=True)
-            
+            st.write("") # 少しだけ余白
             col_admin1, col_admin2 = st.columns([1, 2])
             
             # 左側：メンテナンスチェックボタン
             with col_admin1:
-                if check_alert:
-                    st.markdown('<span class="alert-text">⚠️ 未チェック有り</span>', unsafe_allow_html=True)
-                
                 c_btn = get_img_html("8.png", "🔍", alert=check_alert, width="100px")
                 check_url = "https://docs.google.com/spreadsheets/d/1EofzMjd3dAq8sRCdQXpxw3_-T1VDWpd-aDrvxWD4fYc/edit?gid=1552856942#gid=1552856942"
                 st.markdown(f'<a href="{check_url}" target="_blank" style="text-decoration:none;">{c_btn}<p class="btn-text" style="text-align:center;">メンテナンス<br>チェック</p></a>', unsafe_allow_html=True)
