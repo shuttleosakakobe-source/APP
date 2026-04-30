@@ -138,13 +138,11 @@ def main_screen():
     b3 = get_img_html("5.png", "📢")
     b4 = get_img_html("image_d3349a.png", "🎓")
 
-    # --- 今回の修正箇所：メンテナンス確認のURLを固定化 ---
-    maintenance_check_url = "https://docs.google.com/spreadsheets/d/1EofzMjd3dAq8sRCdQXpxw3_-T1VDWpd-aDrvxWD4fYc/edit?gid=1552856942#gid=1552856942"
-
+    # 元の状態：hrefに{st.session_state.user_url}を使用する形に戻しました
     grid_html = f'''
         <div class="button-grid">
             <a class="btn-item" href="https://docs.google.com/forms/d/e/1FAIpQLSc4E3L_UJkVxMMSTOYgcw3SJyoBixHoJfhe0WC-x1wbK6lsHw/viewform?usp=sharing" target="_blank">{b1}<p class="btn-text" style="margin-top:6px;">メンテナンス<br>入力</p></a>
-            <a class="btn-item" href="{maintenance_check_url}" target="_blank">{b2}<p class="btn-text" style="margin-top:6px;">メンテナンス<br>確認</p></a>
+            <a class="btn-item" href="{st.session_state.user_url}" target="_blank">{b2}<p class="btn-text" style="margin-top:6px;">メンテナンス<br>確認</p></a>
             <a class="btn-item" href="https://www.google.com" target="_blank">{b3}<p class="btn-text" style="margin-top:6px;">キャンペーン<br>入力</p></a>
             <a class="btn-item" href="https://drive.google.com/drive/folders/1vZE__7Th8RuVtkNQpG-rAZSBtAvG7cTX" target="_blank">{b4}<p class="btn-text" style="margin-top:6px;">勉強会<br>資料</p></a>
         </div>
