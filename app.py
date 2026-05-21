@@ -63,7 +63,8 @@ def main_screen():
         .block-container { padding-top: 1.5rem !important; padding-bottom: 2rem !important; max-width: 500px; }
         [data-testid="stVerticalBlock"] { gap: 1.2rem !important; }
         .user-label { text-align: right; font-size: 13px; color: #666; font-weight: bold; margin-bottom: 5px; }
-        .button-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 15px 0; }
+        /* ボタン5つのため、パソコンなど大画面では5列、スマホ等では2列で綺麗に折返す設定に変更 */
+        .button-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 15px 0; }
         @media (max-width: 600px) { .button-grid { grid-template-columns: repeat(2, 1fr); } }
         .btn-item { text-align: center; text-decoration: none; display: block; color: black !important; }
         .btn-text { font-size: 12px; font-weight: bold; line-height: 1.2; text-align: center; width: 100%; }
@@ -132,19 +133,20 @@ def main_screen():
                     sel = st.selectbox("対象を選択", opts, label_visibility="collapsed")
                     st.link_button(f"👉 確認を開く", alert_rows[opts.index(sel)]['url'], use_container_width=True)
 
-    # 🔘 メインボタン 4つ
+    # 🔘 メインボタン 5つ
     b1 = get_img_html("3.png", "📄")
     b2 = get_img_html("4.png", "📋", alert=st.session_state.needs_alert)
     b3 = get_img_html("5.png", "📢")
-    b4 = get_img_html("image_d3349a.png", "🎓")
+    b4 = get_img_html("5.png", "🧽") # スポンジ用に5.pngを使用
+    b5 = get_img_html("image_d3349a.png", "🎓")
 
-    # 元の状態：hrefに{st.session_state.user_url}を使用する形に戻しました
     grid_html = f'''
         <div class="button-grid">
             <a class="btn-item" href="https://docs.google.com/forms/d/e/1FAIpQLSc4E3L_UJkVxMMSTOYgcw3SJyoBixHoJfhe0WC-x1wbK6lsHw/viewform?usp=sharing" target="_blank">{b1}<p class="btn-text" style="margin-top:6px;">メンテナンス<br>入力</p></a>
             <a class="btn-item" href="{st.session_state.user_url}" target="_blank">{b2}<p class="btn-text" style="margin-top:6px;">メンテナンス<br>確認</p></a>
             <a class="btn-item" href="https://www.google.com" target="_blank">{b3}<p class="btn-text" style="margin-top:6px;">キャンペーン<br>入力</p></a>
-            <a class="btn-item" href="https://drive.google.com/drive/folders/1vZE__7Th8RuVtkNQpG-rAZSBtAvG7cTX" target="_blank">{b4}<p class="btn-text" style="margin-top:6px;">勉強会<br>資料</p></a>
+            <a class="btn-item" href="https://docs.google.com/forms/d/1t_3QDu1sOFXdBvwRzIuwdI1yT0Ez_AunIEXKz_Bds3c/edit#responses" target="_blank">{b4}<p class="btn-text" style="margin-top:6px;">スポンジ<br>キャンペーン入力</p></a>
+            <a class="btn-item" href="https://drive.google.com/drive/folders/1vZE__7Th8RuVtkNQpG-rAZSBtAvG7cTX" target="_blank">{b5}<p class="btn-text" style="margin-top:6px;">勉強会<br>資料</p></a>
         </div>
     '''
     st.markdown(grid_html, unsafe_allow_html=True)
