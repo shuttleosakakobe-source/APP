@@ -132,4 +132,84 @@ def main_screen():
             with col_admin2:
                 # スポンジキャンペーンチェック用のボタン（画像は5.png、絵文字は📊を代用）
                 sponge_btn = get_img_html("5.png", "📊", alert=False, width="90px")
-                sponge_url = "
+                sponge_url = "https://docs.google.com/spreadsheets/d/1CUviW0AH8UdG4ZdF2CkuHh9NJKVM2NAYfXi8omQb3xE/edit?gid=0#gid=0"
+                st.markdown(f'''
+                    <div class="admin-box">
+                        <a href="{sponge_url}" target="_blank" style="text-decoration:none; color:black;">
+                            {sponge_btn}
+                            <p class="btn-text" style="margin-top: 12px;">スポンジ<br>キャンペーンチェック</p>
+                        </a>
+                    </div>
+                ''', unsafe_allow_html=True)
+            
+            # 未処理スタッフの選択リストがある場合は、ボタンの下に横幅いっぱいで表示
+            if alert_rows:
+                st.write("")
+                st.markdown('<span class="alert-text">⚠️ メンテナンス未処理</span>', unsafe_allow_html=True)
+                opts = [f"{r['name']} さん" for r in alert_rows]
+                sel = st.selectbox("対象を選択", opts, label_visibility="collapsed")
+                st.link_button(f"👉 確認を開く", alert_rows[opts.index(sel)]['url'], use_container_width=True)
+
+    # 🔘 メインボタン 4つ
+    b1 = get_img_html("3.png", "📄")
+    b2 = get_img_html("4.png", "📋", alert=st.session_state.needs_alert)
+    b4 = get_img_html("5.png", "🧽")
+    b5 = get_img_html("image_d3349a.png", "🎓")
+
+    grid_html = f'''
+        <div class="button-grid">
+            <a class="btn-item" href="https://docs.google.com/forms/d/e/1FAIpQLSc4E3L_UJkVxMMSTOYgcw3SJyoBixHoJfhe0WC-x1wbK6lsHw/viewform?usp=sharing" target="_blank">{b1}<p class="btn-text" style="margin-top:6px;">メンテナンス<br>入力</p></a>
+            <a class="btn-item" href="{st.session_state.user_url}" target="_blank">{b2}<p class="btn-text" style="margin-top:6px;">メンテナンス<br>確認</p></a>
+            <a class="btn-item" href="https://docs.google.com/forms/d/1t_3QDu1sOFXdBvwRzIuwdI1yT0Ez_AunIEXKz_Bds3c/edit#responses" target="_blank">{b4}<p class="btn-text" style="margin-top:6px;">スポンジ<br>キャンペーン入力</p></a>
+            <a class="btn-item" href="https://drive.google.com/drive/folders/1vZE__7Th8RuVtkNQpG-rAZSBtAvG7cTX" target="_blank">{b5}<p class="btn-text" style="margin-top:6px;">勉強会<br>資料</p></a>
+        </div>
+    '''
+    st.markdown(grid_html, unsafe_allow_html=True)
+
+    st.write("---")
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if os.path.exists("6.png"): st.image("6.png", width=110)
+    with col2:
+        if st.button("🚪 ログアウト", use_container_width=True):
+            st_javascript("localStorage.clear();")
+            st.session_state.login_status = False
+            st.session_state.logout_requested = True
+            st.rerun()
+
+# --- 6. 実行ロジック ---
+if 'login_status' not in st.session_state: st.session_state.login_status = False
+if 'logout_requested' not in st.session_state: st.session_state.logout_requested = False
+
+if not st.session_state.login_status and not st.session_state.logout_requested:
+    stored = get_login_storage()
+    if stored and str(stored[0]) not in ["None", "null", "0", "undefined", ""]:
+        st.session_state.user_name = str(stored[0])
+        st.session_state.user_url = str(stored[1])
+        st.session_state.needs_alert = (str(stored[2]) == 'True')
+        st.session_state.user_role = str(stored[3])
+        st.session_state.login_status = True
+        st.rerun()
+
+if st.session_state.login_status:
+    main_screen()
+else:
+    if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
+    u_code = st.text_input("担当者コード").strip()
+    u_pass = st.text_input("パスワード", type="password").strip()
+    if st.button("ログイン", use_container_width=True):
+        raw = load_sheet_data(gid="0")
+        h = raw[0]
+        rows = [dict(zip(h, r)) for r in raw[1:]]
+        user = next((r for r in rows if str(r.get('担当者コード')).strip() == u_code and str(r.get('パスワード')).strip() == u_pass), None)
+        if user:
+            vals = list(user.values())
+            st.session_state.user_name = user.get('担当者名')
+            st.session_state.user_url = user.get('URL')
+            st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", ""])
+            st.session_state.user_role = str(vals[6]).strip() if len(vals) >= 7 else "2"
+            st.session_state.login_status = True
+            st.session_state.logout_requested = False
+            set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role)
+            st.rerun()
+        else: st.error("認証失敗")
