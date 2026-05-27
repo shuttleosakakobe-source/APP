@@ -9,7 +9,7 @@ from streamlit_javascript import st_javascript
 # --- 1. ページ設定 ---
 st.set_page_config(
     page_title="ダスキンシャトル北大阪 業務アプリ",
-    page_icon="icon.png",
+    page_icon="icon.png", # ブラウザのタブ用
     layout="centered"
 )
 
@@ -57,13 +57,22 @@ def get_login_storage():
 
 # --- 5. メイン画面 ---
 def main_screen():
+    # ★ スマホの「ホーム画面追加」用アイコン設定（icon.pngを読み込んで埋め込む）
+    if os.path.exists("icon.png"):
+        with open("icon.png", "rb") as f:
+            icon_data = base64.b64encode(f.read()).decode()
+        icon_html = f'''
+            <link rel="apple-touch-icon" href="data:image/png;base64,{icon_data}">
+            <link rel="icon" sizes="192x192" href="data:image/png;base64,{icon_data}">
+        '''
+        st.markdown(icon_html, unsafe_allow_html=True)
+
     st.markdown("""
         <style>
         header {visibility: hidden; height: 0px !important;}
         .block-container { padding-top: 1.5rem !important; padding-bottom: 2rem !important; max-width: 500px; }
         [data-testid="stVerticalBlock"] { gap: 1.2rem !important; }
         .user-label { text-align: right; font-size: 13px; color: #666; font-weight: bold; margin-bottom: 5px; }
-        /* ボタン4つのため、4列グリッド（スマホでは2列）に戻しました */
         .button-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 15px 0; }
         @media (max-width: 600px) { .button-grid { grid-template-columns: repeat(2, 1fr); } }
         .btn-item { text-align: center; text-decoration: none; display: block; color: black !important; }
@@ -110,11 +119,8 @@ def main_screen():
             if len(vals) >= 6 and str(vals[5]).strip() not in ["0", "", "None"]:
                 alert_rows.append({"name": str(vals[1]), "url": str(vals[3])})
 
-        # 管理者用データがある場合のみエリアを展開
         if check_alert or alert_rows or st.session_state.user_role == "1":
             st.write("") 
-            
-            # 2つの管理ボタンを並べるカラム
             col_admin1, col_admin2 = st.columns([1, 1])
             
             with col_admin1:
@@ -130,7 +136,6 @@ def main_screen():
                 ''', unsafe_allow_html=True)
                 
             with col_admin2:
-                # スポンジキャンペーンチェック用のボタン（画像は5.png、絵文字は📊を代用）
                 sponge_btn = get_img_html("5.png", "📊", alert=False, width="90px")
                 sponge_url = "https://docs.google.com/spreadsheets/d/1CUviW0AH8UdG4ZdF2CkuHh9NJKVM2NAYfXi8omQb3xE/edit?gid=0#gid=0"
                 st.markdown(f'''
@@ -142,7 +147,6 @@ def main_screen():
                     </div>
                 ''', unsafe_allow_html=True)
             
-            # 未処理スタッフの選択リストがある場合は、ボタンの下に横幅いっぱいで表示
             if alert_rows:
                 st.write("")
                 st.markdown('<span class="alert-text">⚠️ メンテナンス未処理</span>', unsafe_allow_html=True)
@@ -194,6 +198,12 @@ if not st.session_state.login_status and not st.session_state.logout_requested:
 if st.session_state.login_status:
     main_screen()
 else:
+    # ログイン画面でもホーム画面用アイコンを認識させる
+    if os.path.exists("icon.png"):
+        with open("icon.png", "rb") as f:
+            icon_data = base64.b64encode(f.read()).decode()
+        st.markdown(f'<link rel="apple-touch-icon" href="data:image/png;base64,{icon_data}">', unsafe_allow_html=True)
+
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
     u_code = st.text_input("担当者コード").strip()
     u_pass = st.text_input("パスワード", type="password").strip()
