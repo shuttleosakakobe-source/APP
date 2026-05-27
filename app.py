@@ -132,7 +132,18 @@ def main_screen():
         header {visibility: hidden; height: 0px !important;}
         .block-container { padding-top: 1.5rem !important; padding-bottom: 2rem !important; max-width: 500px; }
         [data-testid="stVerticalBlock"] { gap: 1.2rem !important; }
-        .user-label { text-align: right; font-size: 13px; color: #666; font-weight: bold; margin-bottom: 5px; }
+        .user-label-btn { text-align: right; margin-bottom: 5px; }
+        .user-label-btn button {
+            background: none !important;
+            border: none !important;
+            color: #666 !important;
+            font-size: 13px !important;
+            font-weight: bold !important;
+            padding: 0 !important;
+            margin-left: auto !important;
+            display: block !important;
+            box-shadow: none !important;
+        }
         .button-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 15px 0; }
         @media (max-width: 600px) { .button-grid { grid-template-columns: repeat(2, 1fr); } }
         .btn-item { text-align: center; text-decoration: none; display: block; color: black !important; }
@@ -159,7 +170,12 @@ def main_screen():
         vals = list(current_user_data.values())
         st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
 
-    st.markdown(f"<p class='user-label'>👤 {st.session_state.user_name} さん</p>", unsafe_allow_html=True)
+    # 👤 名前の部分をボタン化（隠しスイッチ）
+    st.markdown('<div class="user-label-btn">', unsafe_allow_html=True)
+    if st.button(f"👤 {st.session_state.user_name} さん", key="hidden_toggle"):
+        st.session_state.show_timecard = not st.session_state.get('show_timecard', False)
+    st.markdown('</div>', unsafe_allow_html=True)
+
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
 
     announcement = data[0].get('お知らせ', '安全運転でお願いします')
@@ -170,19 +186,20 @@ def main_screen():
         </div>
     ''', unsafe_allow_html=True)
 
-    # --- 🕒 勤怠・所在打刻エリア ---
-    st.write("### 🕒 勤怠・所在打刻")
-    att_col1, att_col2, att_col3 = st.columns(3)
-    with att_col1:
-        if st.button("🌅 出社", use_container_width=True):
-            submit_attendance_direct("出社")
-    with att_col2:
-        if st.button("🚗 帰社", use_container_width=True):
-            submit_attendance_direct("帰社")
-    with att_col3:
-        if st.button("🌃 退社", use_container_width=True):
-            submit_attendance_direct("退社")
-    st.write("---")
+    # --- 🕒 【隠し機能】スイッチONの時だけ表示される打刻エリア ---
+    if st.session_state.get('show_timecard', False):
+        st.write("### 🕒 勤怠・所在打刻")
+        att_col1, att_col2, att_col3 = st.columns(3)
+        with att_col1:
+            if st.button("🌅 出社", use_container_width=True):
+                submit_attendance_direct("出社")
+        with att_col2:
+            if st.button("🚗 帰社", use_container_width=True):
+                submit_attendance_direct("帰社")
+        with att_col3:
+            if st.button("🌃 退社", use_container_width=True):
+                submit_attendance_direct("退社")
+        st.write("---")
 
     # 管理者エリア
     if st.session_state.user_role == "1":
@@ -259,6 +276,7 @@ def main_screen():
             st_javascript("localStorage.clear();")
             st.session_state.login_status = False
             st.session_state.logout_requested = True
+            st.session_state.show_timecard = False
             st.rerun()
 
 # --- 7. 実行ロジック ---
