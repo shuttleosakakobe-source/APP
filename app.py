@@ -9,7 +9,7 @@ from streamlit_javascript import st_javascript
 # --- 1. ページ設定 ---
 st.set_page_config(
     page_title="ダスキンシャトル北大阪 業務アプリ",
-    page_icon="icon.png", # ブラウザのタブ用
+    page_icon="icon.png", 
     layout="centered"
 )
 
@@ -57,14 +57,14 @@ def get_login_storage():
 
 # --- 5. メイン画面 ---
 def main_screen():
-    # ★ スマホの「ホーム画面追加」用アイコン設定（icon.pngを読み込んで埋め込む）
+    # アイコン設定 ＋ Streamlitの自動アプリ化（manifest）を強制的に上書きして無効化する記述を追加
     if os.path.exists("icon.png"):
         with open("icon.png", "rb") as f:
             icon_data = base64.b64encode(f.read()).decode()
         icon_html = f'''
             <link rel="apple-touch-icon" href="data:image/png;base64,{icon_data}">
             <link rel="icon" sizes="192x192" href="data:image/png;base64,{icon_data}">
-        '''
+            <link rel="manifest" href="data:application/json;base64,e30="> '''
         st.markdown(icon_html, unsafe_allow_html=True)
 
     st.markdown("""
@@ -198,11 +198,13 @@ if not st.session_state.login_status and not st.session_state.logout_requested:
 if st.session_state.login_status:
     main_screen()
 else:
-    # ログイン画面でもホーム画面用アイコンを認識させる
     if os.path.exists("icon.png"):
         with open("icon.png", "rb") as f:
             icon_data = base64.b64encode(f.read()).decode()
-        st.markdown(f'<link rel="apple-touch-icon" href="data:image/png;base64,{icon_data}">', unsafe_allow_html=True)
+        st.markdown(f'''
+            <link rel="apple-touch-icon" href="data:image/png;base64,{icon_data}">
+            <link rel="manifest" href="data:application/json;base64,e30=">
+        ''', unsafe_allow_html=True)
 
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
     u_code = st.text_input("担当者コード").strip()
