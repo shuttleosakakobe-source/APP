@@ -4,6 +4,7 @@ import base64
 import urllib.request
 import csv
 import io
+import json
 from streamlit_javascript import st_javascript 
 
 # --- 1. ページ設定 ---
@@ -12,6 +13,9 @@ st.set_page_config(
     page_icon="icon.png", 
     layout="centered"
 )
+
+# --- 【直接連携】発行いただいたGASのウェブアプリURL ---
+GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwMUBZHk4bIrpNmopGkk2huKLdkhdzFynxqSuDxfRD_9mcIFet_osyQIg4V-CKovfQu/exec"
 
 # --- 2. スプレッドシート取得関数 ---
 @st.cache_data(ttl=0)
@@ -42,37 +46,35 @@ def get_img_html(file_name, emoji, alert=False, width="100%"):
     return f'<div style="width:{width}; aspect-ratio:1/1; background:#f0f2f6; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:40px; border:{border}; {shadow}; margin: 0 auto;">{emoji}</div>'
 
 # --- 4. ログイン維持用関数 ---
-def set_login_storage(name, url, alert, role):
+def set_login_storage(name, url, alert, role, code):
     st_javascript(f"localStorage.setItem('shuttle_user_name', '{name}');")
     st_javascript(f"localStorage.setItem('shuttle_user_url', '{url}');")
     st_javascript(f"localStorage.setItem('shuttle_needs_alert', '{alert}');")
     st_javascript(f"localStorage.setItem('shuttle_user_role', '{role}');")
+    st_javascript(f"localStorage.setItem('shuttle_user_code', '{code}');")
 
 def get_login_storage():
     name = st_javascript("localStorage.getItem('shuttle_user_name');")
     url = st_javascript("localStorage.getItem('shuttle_user_url');")
     alert = st_javascript("localStorage.getItem('shuttle_needs_alert');")
     role = st_javascript("localStorage.getItem('shuttle_user_role');")
-    return name, url, alert, role
+    code = st_javascript("localStorage.getItem('shuttle_user_code');")
+    return name, url, alert, role, code
 
 # --- 5. 強制アイコン＆ダウンロードブロック関数 ---
 def inject_pwa_blocker():
-    """Streamlit標準のダウンロード誘導を完全に破壊し、独自アイコンをセットする"""
     if os.path.exists("icon.png"):
         with open("icon.png", "rb") as f:
             icon_data = base64.b64encode(f.read()).decode()
         
         block_html = f'''
             <script>
-                // 1. Streamlitが勝手に生成するmanifestファイルをHTMLから徹底的に排除・書き換え
                 const links = parent.document.getElementsByTagName("link");
                 for (let link of links) {{
                     if (link.rel === "manifest" || link.href.includes("manifest")) {{
-                        link.href = "data:application/json;base64,e30="; // 空のデータにして破壊
+                        link.href = "data:application/json;base64,e30=";
                     }}
                 }}
-                
-                // 2. スマホのホーム画面用アイコンを強制的にセット
                 let appleLink = parent.document.querySelector("link[rel='apple-touch-icon']");
                 if (!appleLink) {{
                     appleLink = parent.document.createElement("link");
@@ -93,9 +95,37 @@ def inject_pwa_blocker():
         '''
         st.components.v1.html(block_html, height=0, width=0)
 
+# --- 直接スプレッドシート（GAS）にデータをPOST送信する関数 ---
+def submit_attendance_direct(status):
+    user_code = st.session_state.get('user_code', '')
+    user_name = st.session_state.get('user_name', '')
+    
+    payload = {
+        "code": user_code,
+        "name": user_name,
+        "status": status
+    }
+    
+    data = json.dumps(payload).encode('utf-8')
+    req = urllib.request.Request(
+        GAS_WEBAPP_URL, 
+        data=data, 
+        headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
+    )
+    
+    try:
+        with urllib.request.urlopen(req) as response:
+            res_body = json.loads(response.read().decode('utf-8'))
+            if res_body.get("status") == "success":
+                st.toast(f"🎉 {status} を記録しました！", icon="✅")
+            else:
+                st.error(f"記録失敗: {res_body.get('message')}")
+    except Exception as e:
+        st.error("スプレッドシートとの直接通信に失敗しました。")
+
 # --- 6. メイン画面 ---
 def main_screen():
-    inject_pwa_blocker() # ダウンロード防止策を実行
+    inject_pwa_blocker() 
 
     st.markdown("""
         <style>
@@ -111,6 +141,12 @@ def main_screen():
         hr { margin: 1.2rem 0 !important; }
         .alert-text { color: red; font-weight: bold; font-size: 14px; margin-bottom: 8px; display: block; text-align: center; }
         .admin-box { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; text-align: center; }
+        
+        div.stButton > button {
+            font-weight: bold !important;
+            border-radius: 10px !important;
+            height: 45px !important;
+        }
         </style>
     """, unsafe_allow_html=True)
 
@@ -133,6 +169,20 @@ def main_screen():
             <marquee scrollamount="5" style="color:red; font-weight:bold; font-size:16px;">{announcement}</marquee>
         </div>
     ''', unsafe_allow_html=True)
+
+    # --- 🕒 勤怠・所在打刻エリア ---
+    st.write("### 🕒 勤怠・所在打刻")
+    att_col1, att_col2, att_col3 = st.columns(3)
+    with att_col1:
+        if st.button("🌅 出社", use_container_width=True):
+            submit_attendance_direct("出社")
+    with att_col2:
+        if st.button("🚗 帰社", use_container_width=True):
+            submit_attendance_direct("帰社")
+    with att_col3:
+        if st.button("🌃 退社", use_container_width=True):
+            submit_attendance_direct("退社")
+    st.write("---")
 
     # 管理者エリア
     if st.session_state.user_role == "1":
@@ -222,17 +272,18 @@ if not st.session_state.login_status and not st.session_state.logout_requested:
         st.session_state.user_url = str(stored[1])
         st.session_state.needs_alert = (str(stored[2]) == 'True')
         st.session_state.user_role = str(stored[3])
+        st.session_state.user_code = str(stored[4]) if len(stored) >= 5 else ""
         st.session_state.login_status = True
         st.rerun()
 
 if st.session_state.login_status:
     main_screen()
 else:
-    inject_pwa_blocker() # ログイン画面でもダウンロード防止策を実行
+    inject_pwa_blocker() 
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
     u_code = st.text_input("担当者コード").strip()
     u_pass = st.text_input("パスワード", type="password").strip()
-    if st.button("ログイン", use_container_width=True):
+    if st.button("ログイン", type="primary", use_container_width=True):
         raw = load_sheet_data(gid="0")
         h = raw[0]
         rows = [dict(zip(h, r)) for r in raw[1:]]
@@ -243,8 +294,9 @@ else:
             st.session_state.user_url = user.get('URL')
             st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", ""])
             st.session_state.user_role = str(vals[6]).strip() if len(vals) >= 7 else "2"
+            st.session_state.user_code = u_code
             st.session_state.login_status = True
             st.session_state.logout_requested = False
-            set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role)
+            set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role, st.session_state.user_code)
             st.rerun()
         else: st.error("認証失敗")
