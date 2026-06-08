@@ -35,7 +35,7 @@ def load_sheet_data(gid="0"):
     except:
         return None
 
-# --- 次回訪問日および本日の予定を取得する関数 ---
+# --- 【機能拡張】次回訪問日および本日の予定を取得する関数 ---
 def get_visit_schedule_data(user_code):
     rows = load_sheet_data(gid="370581902")
     if not rows or len(rows) < 2:
@@ -52,8 +52,11 @@ def get_visit_schedule_data(user_code):
         return {}, "未登録"
         
     today = datetime.now().date()
+    
+    # 本日の予定用変数
     today_schedule = "なし"
     
+    # 次回訪問日用
     visit_dates = {"1W": None, "2W": None, "4W": None, "8W": None}
     type_map = {"A": "1W", "B": "2W", "C": "4W", "D": "8W"}
     
@@ -300,6 +303,7 @@ def main_screen():
     w4_disp = visit_info.get("4W", {}).get("display", "--/--") if visit_info.get("4W") else "--/--"
     w8_disp = visit_info.get("8W", {}).get("display", "--/--") if visit_info.get("8W") else "--/--"
     
+    # 今日の日付を成形
     today_str = datetime.now().strftime('%m/%d')
 
     st.markdown(f'''
