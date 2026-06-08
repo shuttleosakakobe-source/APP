@@ -5,6 +5,7 @@ import urllib.request
 import csv
 import io
 import json
+from datetime import datetime
 from streamlit_javascript import st_javascript 
 
 # --- 1. ページ設定 ---
@@ -14,7 +15,7 @@ st.set_page_config(
     layout="centered"
 )
 
-# --- 【直接連携】発行いただいたGASのウェブアプリURL ---
+# --- 【直接連携】GASのウェブアプリURL ---
 GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwMUBZHk4bIrpNmopGkk2huKLdkhdzFynxqSuDxfRD_9mcIFet_osyQIg4V-CKovfQu/exec"
 
 # --- 2. スプレッドシート取得関数 ---
@@ -33,6 +34,66 @@ def load_sheet_data(gid="0"):
         return list(reader)
     except:
         return None
+
+# --- 次回訪問日および本日の予定を取得する関数 ---
+def get_visit_schedule_data(user_code):
+    rows = load_sheet_data(gid="370581902")
+    if not rows or len(rows) < 2:
+        return {}, "データなし"
+        
+    header = rows[0]
+    user_col_idx = -1
+    for idx, col in enumerate(header):
+        if str(col).strip() == str(user_code).strip():
+            user_col_idx = idx
+            break
+            
+    if user_col_idx == -1:
+        return {}, "未登録"
+        
+    today = datetime.now().date()
+    today_schedule = "なし"
+    
+    visit_dates = {"1W": None, "2W": None, "4W": None, "8W": None}
+    type_map = {"A": "1W", "B": "2W", "C": "4W", "D": "8W"}
+    
+    for row in rows[1:]:
+        if len(row) <= user_col_idx:
+            continue
+        
+        date_str = row[0].strip()
+        cell_val = row[user_col_idx].strip()
+        
+        if not date_str:
+            continue
+            
+        try:
+            date_cleaned = date_str.split(" ")[0]
+            row_date = datetime.strptime(date_cleaned, "%Y/%m/%d").date()
+        except:
+            try:
+                row_date = datetime.strptime(date_cleaned, "%Y-%m-%d").date()
+            except:
+                continue
+                
+        # 1. 本日の予定チェック
+        if row_date == today:
+            if cell_val:
+                today_schedule = cell_val
+                
+        # 2. 次回訪問日の計算（今日以降を対象）
+        if row_date >= today:
+            if cell_val:
+                first_char = cell_val[0].upper()
+                if first_char in type_map:
+                    week_key = type_map[first_char]
+                    if visit_dates[week_key] is None or row_date < visit_dates[week_key]["date"]:
+                        visit_dates[week_key] = {
+                            "date": row_date,
+                            "display": f"{row_date.strftime('%m/%d')}({cell_val[1:]})" if len(cell_val) > 1 else f"{row_date.strftime('%m/%d')}"
+                        }
+                        
+    return visit_dates, today_schedule
 
 # --- 3. 画像をHTML化する関数 ---
 def get_img_html(file_name, emoji, alert=False, width="100%"):
@@ -132,7 +193,18 @@ def main_screen():
         header {visibility: hidden; height: 0px !important;}
         .block-container { padding-top: 1.5rem !important; padding-bottom: 2rem !important; max-width: 500px; }
         [data-testid="stVerticalBlock"] { gap: 1.2rem !important; }
-        .user-label { text-align: right; font-size: 13px; color: #666; font-weight: bold; margin-bottom: 5px; }
+        .user-label-btn { text-align: right; margin-bottom: 5px; }
+        .user-label-btn button {
+            background: none !important;
+            border: none !important;
+            color: #666 !important;
+            font-size: 13px !important;
+            font-weight: bold !important;
+            padding: 0 !important;
+            margin-left: auto !important;
+            display: block !important;
+            box-shadow: none !important;
+        }
         .button-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 15px 0; }
         @media (max-width: 600px) { .button-grid { grid-template-columns: repeat(2, 1fr); } }
         .btn-item { text-align: center; text-decoration: none; display: block; color: black !important; }
@@ -141,6 +213,50 @@ def main_screen():
         hr { margin: 1.2rem 0 !important; }
         .alert-text { color: red; font-weight: bold; font-size: 14px; margin-bottom: 8px; display: block; text-align: center; }
         .admin-box { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; text-align: center; }
+        
+        /* 次回訪問日・本日の予定のデザイン */
+        .visit-container {
+            background-color: #f4f6f9;
+            border: 1px solid #dcdfe6;
+            padding: 10px;
+            border-radius: 10px;
+            margin-top: 8px;
+        }
+        .visit-title {
+            font-size: 13px;
+            font-weight: bold;
+            color: #409eff;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+        }
+        .visit-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .visit-box {
+            background: white;
+            padding: 4px;
+            border-radius: 6px;
+            border: 1px solid #e4e7ed;
+        }
+        .visit-label { font-size: 11px; color: #909399; font-weight: bold; }
+        .visit-date { font-size: 13px; color: #303133; font-weight: bold; margin-top: 2px; }
+        
+        .today-schedule-box {
+            background-color: #eef7fe;
+            border: 1px solid #c6e2ff;
+            border-radius: 6px;
+            padding: 6px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .today-title { font-size: 12px; font-weight: bold; color: #0056b3; }
+        .today-val { font-size: 14px; font-weight: bold; color: #cd1212; }
         
         div.stButton > button {
             font-weight: bold !important;
@@ -159,9 +275,15 @@ def main_screen():
         vals = list(current_user_data.values())
         st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
 
-    st.markdown(f"<p class='user-label'>👤 {st.session_state.user_name} さん</p>", unsafe_allow_html=True)
+    # 👤 名前の部分をボタン化（隠しスイッチ）
+    st.markdown('<div class="user-label-btn">', unsafe_allow_html=True)
+    if st.button(f"👤 {st.session_state.user_name} さん", key="hidden_toggle"):
+        st.session_state.show_timecard = not st.session_state.get('show_timecard', False)
+    st.markdown('</div>', unsafe_allow_html=True)
+
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
 
+    # 🔔 お知らせ枠
     announcement = data[0].get('お知らせ', '安全運転でお願いします')
     st.markdown(f'''
         <div style="background-color:#fffbe6; border:2px solid #ffe58f; padding:10px; border-radius:10px; display:flex; align-items:center; margin-top: 5px;">
@@ -170,19 +292,47 @@ def main_screen():
         </div>
     ''', unsafe_allow_html=True)
 
-    # --- 🕒 勤怠・所在打刻エリア ---
-    st.write("### 🕒 勤怠・所在打刻")
-    att_col1, att_col2, att_col3 = st.columns(3)
-    with att_col1:
-        if st.button("🌅 出社", use_container_width=True):
-            submit_attendance_direct("出社")
-    with att_col2:
-        if st.button("🚗 帰社", use_container_width=True):
-            submit_attendance_direct("帰社")
-    with att_col3:
-        if st.button("🌃 退社", use_container_width=True):
-            submit_attendance_direct("退社")
-    st.write("---")
+    # --- 📅 「次回訪問日」＆「本日の予定」表示 ---
+    visit_info, today_sched = get_visit_schedule_data(st.session_state.get('user_code', ''))
+    
+    w1_disp = visit_info.get("1W", {}).get("display", "--/--") if visit_info.get("1W") else "--/--"
+    w2_disp = visit_info.get("2W", {}).get("display", "--/--") if visit_info.get("2W") else "--/--"
+    w4_disp = visit_info.get("4W", {}).get("display", "--/--") if visit_info.get("4W") else "--/--"
+    w8_disp = visit_info.get("8W", {}).get("display", "--/--") if visit_info.get("8W") else "--/--"
+    
+    today_str = datetime.now().strftime('%m/%d')
+
+    st.markdown(f'''
+        <div class="visit-container">
+            <div class="visit-title">📅 次回訪問日</div>
+            <div class="visit-grid">
+                <div class="visit-box"><div class="visit-label">1W</div><div class="visit-date">{w1_disp}</div></div>
+                <div class="visit-box"><div class="visit-label">2W</div><div class="visit-date">{w2_disp}</div></div>
+                <div class="visit-box"><div class="visit-label">4W</div><div class="visit-date">{w4_disp}</div></div>
+                <div class="visit-box"><div class="visit-label">8W</div><div class="visit-date">{w8_disp}</div></div>
+            </div>
+            <div class="today-schedule-box">
+                <span class="today-title">📌 本日の予定 ({today_str})</span>
+                <span class="today-val">{today_sched}</span>
+            </div>
+        </div>
+    ''', unsafe_allow_html=True)
+
+    # --- 🕒 【隠し機能】スイッチONの時だけ表示される打刻エリア ---
+    if st.session_state.get('show_timecard', False):
+        st.write("")
+        st.write("### 🕒 勤怠・所在打刻")
+        att_col1, att_col2, att_col3 = st.columns(3)
+        with att_col1:
+            if st.button("🌅 出社", use_container_width=True):
+                submit_attendance_direct("出社")
+        with att_col2:
+            if st.button("🚗 帰社", use_container_width=True):
+                submit_attendance_direct("帰社")
+        with att_col3:
+            if st.button("🌃 退社", use_container_width=True):
+                submit_attendance_direct("退社")
+        st.write("---")
 
     # 管理者エリア
     if st.session_state.user_role == "1":
@@ -259,6 +409,7 @@ def main_screen():
             st_javascript("localStorage.clear();")
             st.session_state.login_status = False
             st.session_state.logout_requested = True
+            st.session_state.show_timecard = False
             st.rerun()
 
 # --- 7. 実行ロジック ---
