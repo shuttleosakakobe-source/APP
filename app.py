@@ -5,6 +5,7 @@ import urllib.request
 import csv
 import io
 import json
+from datetime import datetime
 from streamlit_javascript import st_javascript 
 
 # --- 1. ページ設定 ---
@@ -14,7 +15,7 @@ st.set_page_config(
     layout="centered"
 )
 
-# --- 【直接連携】発行いただいたGASのウェブアプリURL ---
+# --- 【直接連携】GASのウェブアプリURL ---
 GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwMUBZHk4bIrpNmopGkk2huKLdkhdzFynxqSuDxfRD_9mcIFet_osyQIg4V-CKovfQu/exec"
 
 # --- 2. スプレッドシート取得関数 ---
@@ -33,6 +34,69 @@ def load_sheet_data(gid="0"):
         return list(reader)
     except:
         return None
+
+# --- 【機能拡張】次回訪問日および本日の予定を取得する関数 ---
+def get_visit_schedule_data(user_code):
+    rows = load_sheet_data(gid="370581902")
+    if not rows or len(rows) < 2:
+        return {}, "データなし"
+        
+    header = rows[0]
+    user_col_idx = -1
+    for idx, col in enumerate(header):
+        if str(col).strip() == str(user_code).strip():
+            user_col_idx = idx
+            break
+            
+    if user_col_idx == -1:
+        return {}, "未登録"
+        
+    today = datetime.now().date()
+    
+    # 本日の予定用変数
+    today_schedule = "なし"
+    
+    # 次回訪問日用
+    visit_dates = {"1W": None, "2W": None, "4W": None, "8W": None}
+    type_map = {"A": "1W", "B": "2W", "C": "4W", "D": "8W"}
+    
+    for row in rows[1:]:
+        if len(row) <= user_col_idx:
+            continue
+        
+        date_str = row[0].strip()
+        cell_val = row[user_col_idx].strip()
+        
+        if not date_str:
+            continue
+            
+        try:
+            date_cleaned = date_str.split(" ")[0]
+            row_date = datetime.strptime(date_cleaned, "%Y/%m/%d").date()
+        except:
+            try:
+                row_date = datetime.strptime(date_cleaned, "%Y-%m-%d").date()
+            except:
+                continue
+                
+        # 1. 本日の予定チェック
+        if row_date == today:
+            if cell_val:
+                today_schedule = cell_val
+                
+        # 2. 次回訪問日の計算（今日以降を対象）
+        if row_date >= today:
+            if cell_val:
+                first_char = cell_val[0].upper()
+                if first_char in type_map:
+                    week_key = type_map[first_char]
+                    if visit_dates[week_key] is None or row_date < visit_dates[week_key]["date"]:
+                        visit_dates[week_key] = {
+                            "date": row_date,
+                            "display": f"{row_date.strftime('%m/%d')}({cell_val[1:]})" if len(cell_val) > 1 else f"{row_date.strftime('%m/%d')}"
+                        }
+                        
+    return visit_dates, today_schedule
 
 # --- 3. 画像をHTML化する関数 ---
 def get_img_html(file_name, emoji, alert=False, width="100%"):
@@ -146,175 +210,4 @@ def main_screen():
         }
         .button-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 15px 0; }
         @media (max-width: 600px) { .button-grid { grid-template-columns: repeat(2, 1fr); } }
-        .btn-item { text-align: center; text-decoration: none; display: block; color: black !important; }
-        .btn-text { font-size: 12px; font-weight: bold; line-height: 1.2; text-align: center; width: 100%; }
-        footer {visibility: hidden;}
-        hr { margin: 1.2rem 0 !important; }
-        .alert-text { color: red; font-weight: bold; font-size: 14px; margin-bottom: 8px; display: block; text-align: center; }
-        .admin-box { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; text-align: center; }
-        
-        div.stButton > button {
-            font-weight: bold !important;
-            border-radius: 10px !important;
-            height: 45px !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
-    data_raw = load_sheet_data(gid="0")
-    header = data_raw[0]
-    data = [dict(zip(header, row)) for row in data_raw[1:]]
-    
-    current_user_data = next((r for r in data if r.get('担当者名') == st.session_state.user_name), None)
-    if current_user_data:
-        vals = list(current_user_data.values())
-        st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
-
-    # 👤 名前の部分をボタン化（隠しスイッチ）
-    st.markdown('<div class="user-label-btn">', unsafe_allow_html=True)
-    if st.button(f"👤 {st.session_state.user_name} さん", key="hidden_toggle"):
-        st.session_state.show_timecard = not st.session_state.get('show_timecard', False)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
-
-    announcement = data[0].get('お知らせ', '安全運転でお願いします')
-    st.markdown(f'''
-        <div style="background-color:#fffbe6; border:2px solid #ffe58f; padding:10px; border-radius:10px; display:flex; align-items:center; margin-top: 5px;">
-            <span style="font-size:16px; margin-right:8px;">🔔</span>
-            <marquee scrollamount="5" style="color:red; font-weight:bold; font-size:16px;">{announcement}</marquee>
-        </div>
-    ''', unsafe_allow_html=True)
-
-    # --- 🕒 【隠し機能】スイッチONの時だけ表示される打刻エリア ---
-    if st.session_state.get('show_timecard', False):
-        st.write("### 🕒 勤怠・所在打刻")
-        att_col1, att_col2, att_col3 = st.columns(3)
-        with att_col1:
-            if st.button("🌅 出社", use_container_width=True):
-                submit_attendance_direct("出社")
-        with att_col2:
-            if st.button("🚗 帰社", use_container_width=True):
-                submit_attendance_direct("帰社")
-        with att_col3:
-            if st.button("🌃 退社", use_container_width=True):
-                submit_attendance_direct("退社")
-        st.write("---")
-
-    # 管理者エリア
-    if st.session_state.user_role == "1":
-        check_sheet_rows = load_sheet_data(gid="1552856942")
-        check_alert = False
-        if check_sheet_rows and len(check_sheet_rows) >= 2:
-            target_cells = check_sheet_rows[1][:10]
-            if any(cell.strip() != "" for cell in target_cells):
-                check_alert = True
-        
-        alert_rows = []
-        for row in data:
-            vals = list(row.values())
-            if len(vals) >= 6 and str(vals[5]).strip() not in ["0", "", "None"]:
-                alert_rows.append({"name": str(vals[1]), "url": str(vals[3])})
-
-        if check_alert or alert_rows or st.session_state.user_role == "1":
-            st.write("") 
-            col_admin1, col_admin2 = st.columns([1, 1])
-            
-            with col_admin1:
-                c_btn = get_img_html("8.png", "🔍", alert=check_alert, width="90px")
-                check_url = "https://docs.google.com/spreadsheets/d/1EofzMjd3dAq8sRCdQXpxw3_-T1VDWpd-aDrvxWD4fYc/edit?gid=1552856942#gid=1552856942"
-                st.markdown(f'''
-                    <div class="admin-box">
-                        <a href="{check_url}" target="_blank" style="text-decoration:none; color:black;">
-                            {c_btn}
-                            <p class="btn-text" style="margin-top: 12px;">メンテナンス<br>チェック</p>
-                        </a>
-                    </div>
-                ''', unsafe_allow_html=True)
-                
-            with col_admin2:
-                sponge_btn = get_img_html("5.png", "📊", alert=False, width="90px")
-                sponge_url = "https://docs.google.com/spreadsheets/d/1CUviW0AH8UdG4ZdF2CkuHh9NJKVM2NAYfXi8omQb3xE/edit?gid=0#gid=0"
-                st.markdown(f'''
-                    <div class="admin-box">
-                        <a href="{sponge_url}" target="_blank" style="text-decoration:none; color:black;">
-                            {sponge_btn}
-                            <p class="btn-text" style="margin-top: 12px;">スポンジ<br>キャンペーンチェック</p>
-                        </a>
-                    </div>
-                ''', unsafe_allow_html=True)
-            
-            if alert_rows:
-                st.write("")
-                st.markdown('<span class="alert-text">⚠️ メンテナンス未処理</span>', unsafe_allow_html=True)
-                opts = [f"{r['name']} さん" for r in alert_rows]
-                sel = st.selectbox("対象を選択", opts, label_visibility="collapsed")
-                st.link_button(f"👉 確認を開く", alert_rows[opts.index(sel)]['url'], use_container_width=True)
-
-    # 🔘 メインボタン 4つ
-    b1 = get_img_html("3.png", "📄")
-    b2 = get_img_html("4.png", "📋", alert=st.session_state.needs_alert)
-    b4 = get_img_html("5.png", "🧽")
-    b5 = get_img_html("image_d3349a.png", "🎓")
-
-    grid_html = f'''
-        <div class="button-grid">
-            <a class="btn-item" href="https://docs.google.com/forms/d/e/1FAIpQLSc4E3L_UJkVxMMSTOYgcw3SJyoBixHoJfhe0WC-x1wbK6lsHw/viewform?usp=sharing" target="_blank">{b1}<p class="btn-text" style="margin-top:6px;">メンテナンス<br>入力</p></a>
-            <a class="btn-item" href="{st.session_state.user_url}" target="_blank">{b2}<p class="btn-text" style="margin-top:6px;">メンテナンス<br>確認</p></a>
-            <a class="btn-item" href="https://docs.google.com/forms/d/1t_3QDu1sOFXdBvwRzIuwdI1yT0Ez_AunIEXKz_Bds3c/edit#responses" target="_blank">{b4}<p class="btn-text" style="margin-top:6px;">スポンジ<br>キャンペーン入力</p></a>
-            <a class="btn-item" href="https://drive.google.com/drive/folders/1vZE__7Th8RuVtkNQpG-rAZSBtAvG7cTX" target="_blank">{b5}<p class="btn-text" style="margin-top:6px;">勉強会<br>資料</p></a>
-        </div>
-    '''
-    st.markdown(grid_html, unsafe_allow_html=True)
-
-    st.write("---")
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if os.path.exists("6.png"): st.image("6.png", width=110)
-    with col2:
-        if st.button("🚪 ログアウト", use_container_width=True):
-            st_javascript("localStorage.clear();")
-            st.session_state.login_status = False
-            st.session_state.logout_requested = True
-            st.session_state.show_timecard = False
-            st.rerun()
-
-# --- 7. 実行ロジック ---
-if 'login_status' not in st.session_state: st.session_state.login_status = False
-if 'logout_requested' not in st.session_state: st.session_state.logout_requested = False
-
-if not st.session_state.login_status and not st.session_state.logout_requested:
-    stored = get_login_storage()
-    if stored and str(stored[0]) not in ["None", "null", "0", "undefined", ""]:
-        st.session_state.user_name = str(stored[0])
-        st.session_state.user_url = str(stored[1])
-        st.session_state.needs_alert = (str(stored[2]) == 'True')
-        st.session_state.user_role = str(stored[3])
-        st.session_state.user_code = str(stored[4]) if len(stored) >= 5 else ""
-        st.session_state.login_status = True
-        st.rerun()
-
-if st.session_state.login_status:
-    main_screen()
-else:
-    inject_pwa_blocker() 
-    if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
-    u_code = st.text_input("担当者コード").strip()
-    u_pass = st.text_input("パスワード", type="password").strip()
-    if st.button("ログイン", type="primary", use_container_width=True):
-        raw = load_sheet_data(gid="0")
-        h = raw[0]
-        rows = [dict(zip(h, r)) for r in raw[1:]]
-        user = next((r for r in rows if str(r.get('担当者コード')).strip() == u_code and str(r.get('パスワード')).strip() == u_pass), None)
-        if user:
-            vals = list(user.values())
-            st.session_state.user_name = user.get('担当者名')
-            st.session_state.user_url = user.get('URL')
-            st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", ""])
-            st.session_state.user_role = str(vals[6]).strip() if len(vals) >= 7 else "2"
-            st.session_state.user_code = u_code
-            st.session_state.login_status = True
-            st.session_state.logout_requested = False
-            set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role, st.session_state.user_code)
-            st.rerun()
-        else: st.error("認証失敗")
+        .btn-
