@@ -65,7 +65,7 @@ def parse_flexible_date(date_str):
             
     return None
 
-# --- 【周期個別ロジック版】次回訪問日および本日の予定を取得する関数 ---
+# --- 【新ロジック：数珠つなぎサイクル版】次回訪問日および本日の予定を取得する関数 ---
 def get_visit_schedule_data(user_code):
     rows = load_sheet_data(gid="370581902")
     if not rows or len(rows) < 3:
@@ -101,11 +101,8 @@ def get_visit_schedule_data(user_code):
     today = datetime.now().date()
     today_schedule = "なし"
     
-    # 各周期に該当する候補日をリストで全て収集する
-    w1_candidates = []
-    w2_candidates = []
-    w4_candidates = []
-    w8_candidates = []
+    # 全データ行から、有効な日付とセルの値を集めて日付順に並べる
+    all_schedules = []
     
     for row in rows[2:]:
         if len(row) <= user_col_idx:
@@ -117,70 +114,93 @@ def get_visit_schedule_data(user_code):
         row_date = parse_flexible_date(date_str)
         if not row_date:
             continue
-                
-        # 1. 本日の予定チェック
-        if row_date == today:
-            if cell_val:
-                today_schedule = cell_val
-                
-        # 2. 次回訪問日の候補収集（今日以降を対象）
-        if row_date >= today:
-            if cell_val:
-                first_char = cell_val[0].upper() # セルの最初の文字 (A, B, C, D)
-                
-                # --- 1W の判定ルール ---
-                # Aなら1W(A), Bなら2W(B), Cなら3W(なし), Dなら4W(D)
-                if first_char == "A":
-                    w1_candidates.append({"date": row_date, "val": cell_val})
-                elif first_char == "B":
-                    # 1Wの考え方ではBは2W(B)の枠へ
-                    pass 
-                
-                # --- 2W の判定ルール ---
-                # Aなら1W(AかC), Bなら2W(BかD), Cなら1W(AかC), Dなら2W(BかD)
-                if first_char in ["A", "C"]:
-                    # AかCのときは1W(A)のタイミング
-                    w2_candidates.append({"date": row_date, "val": cell_val})
-                elif first_char in ["B", "D"]:
-                    # BかDのときは2W(B)のタイミング
-                    # (1W側でもBなら2W行きたいので、1WのB枠の代わりにここへ集約)
-                    w1_candidates.append({"date": row_date, "val": cell_val})
-                
-                # --- 4W / 8W の判定ルール ---
-                # 4Wと8Wはそのまま A=A, B=B, C=C, D=D で一致する日付を探す
-                # ログインしているユーザー自身のコード(A,B,C,Dどれか)とセルの一文字目が合致する場合に対象とする
-                # ※ユーザーコードが数字のみ等の場合は、見つかった列の2行目（名前・コース表記など）にA~Dが含まれるか、あるいは全日程を収集して後方互換を保つ
-                # ここでは単純に同じ文字パターン（A~Dのいずれか）として候補へ追加
-                w4_candidates.append({"date": row_date, "val": cell_val, "type": first_char})
-                w8_candidates.append({"date": row_date, "val": cell_val, "type": first_char})
+            
+        # 本日の予定チェック
+        if row_date == today and cell_val:
+            today_schedule = cell_val
+            
+        if cell_val:
+            all_schedules.append({
+                "date": row_date,
+                "val": cell_val,
+                "type": cell_val[0].upper()  # 'A', 'B', 'C', 'D'
+            })
+            
+    # 日付順に並び替え
+    all_schedules.sort(key=lambda x: x["date"])
+    
+    # ユーザー自身の現在のベースコース（今日以降で最初に現れるスケジュールの一文字目）を特定する
+    # 例: 今日以降で最初に「A火」があればベースは "A" と判定
+    current_base_type = "A" 
+    for sched in all_schedules:
+        if sched["date"] >= today:
+            current_base_type = sched["type"]
+            break
 
-    # 日付の近い順（昇順）にソート
-    w1_candidates.sort(key=lambda x: x["date"])
-    w2_candidates.sort(key=lambda x: x["date"])
-    w4_candidates.sort(key=lambda x: x["date"])
-    w8_candidates.sort(key=lambda x: x["date"])
+    # ベースコース（例:A）に基づく各枠のターゲット文字の決定
+    # A ➔ B ➔ C ➔ A ➔ A の順に変遷するルール
+    cycle_order = ["A", "B", "C", "D"]
+    try:
+        base_idx = cycle_order.index(current_base_type)
+    except:
+        base_idx = 0
+        
+    w1_target = cycle_order[(base_idx + 1) % 4]  # AならB
+    w2_target = cycle_order[(base_idx + 2) % 4]  # AならC
+    w4_target = current_base_type                # AならA
+    w8_target = current_base_type                # AならA
 
     visit_dates = {"1W": None, "2W": None, "4W": None, "8W": None}
-
-    # 一番近い日付をセットする関数
-    def get_disp_str(item):
-        d = item["date"]
-        v = item["val"]
+    
+    # 表示用の文字整形関数
+    def get_disp_str(sched_obj):
+        d = sched_obj["date"]
+        v = sched_obj["val"]
         return f"{d.strftime('%m/%d')}({v[1:]})" if len(v) > 1 else f"{d.strftime('%m/%d')}"
 
-    # 1W, 2W はそれぞれの候補の一番近い日付
-    if w1_candidates: visit_dates["1W"] = {"display": get_disp_str(w1_candidates[0])}
-    if w2_candidates: visit_dates["2W"] = {"display": get_disp_str(w2_candidates[0])}
-    
-    # 4W は一番近い日付
-    if w4_candidates: visit_dates["4W"] = {"display": get_disp_str(w4_candidates[0])}
-    
-    # 8W は「2番目に近い日付」を表示
-    if len(w8_candidates) >= 2:
-        visit_dates["8W"] = {"display": get_disp_str(w8_candidates[1])} # インデックス1が2番目
-    elif len(w8_candidates) == 1:
-        # 1つしか無い場合はそれを表示
-        visit_dates["8W"] = {"display": get_disp_str(w8_candidates[0])}
+    # 1. 【1Wの探索】今日以降で、最初の w1_target
+    w1_obj = None
+    for sched in all_schedules:
+        if sched["date"] >= today and sched["type"] == w1_target:
+            w1_obj = sched
+            visit_dates["1W"] = {"display": get_disp_str(sched)}
+            break
+            
+    # 2. 【2Wの探索】今日以降で、最初の w2_target
+    w2_obj = None
+    for sched in all_schedules:
+        if sched["date"] >= today and sched["type"] == w2_target:
+            w2_obj = sched
+            visit_dates["2W"] = {"display": get_disp_str(sched)}
+            break
+
+    # 3. 【4Wの探索】2W（w2_target）の日付以降で、最初の w4_target (ベースコース)
+    w4_obj = None
+    if w2_obj:
+        for sched in all_schedules:
+            if sched["date"] > w2_obj["date"] and sched["type"] == w4_target:
+                w4_obj = sched
+                visit_dates["4W"] = {"display": get_disp_str(sched)}
+                break
+    else:
+        # 万が一2Wが見つからない場合は今日以降で探索
+        for sched in all_schedules:
+            if sched["date"] >= today and sched["type"] == w4_target:
+                w4_obj = sched
+                visit_dates["4W"] = {"display": get_disp_str(sched)}
+                break
+
+    # 4. 【8Wの探索】4Wの日付以降で、最初の w8_target (ベースコース)
+    if w4_obj:
+        for sched in all_schedules:
+            if sched["date"] > w4_obj["date"] and sched["type"] == w8_target:
+                visit_dates["8W"] = {"display": get_disp_str(sched)}
+                break
+
+    # フォールバック（見つからない項目へのハイフン表示処理）
+    for k in visit_dates:
+        if visit_dates[k] is None:
+            visit_dates[k] = {"display": "--/--"}
 
     return visit_dates, today_schedule
 
@@ -384,10 +404,10 @@ def main_screen():
     # --- 📅 「次回訪問日」＆「本日の予定」表示 ---
     visit_info, today_sched = get_visit_schedule_data(st.session_state.get('user_code', ''))
     
-    w1_disp = visit_info.get("1W", {}).get("display", "--/--") if visit_info.get("1W") else "--/--"
-    w2_disp = visit_info.get("2W", {}).get("display", "--/--") if visit_info.get("2W") else "--/--"
-    w4_disp = visit_info.get("4W", {}).get("display", "--/--") if visit_info.get("4W") else "--/--"
-    w8_disp = visit_info.get("8W", {}).get("display", "--/--") if visit_info.get("8W") else "--/--"
+    w1_disp = visit_info.get("1W", {}).get("display", "--/--")
+    w2_disp = visit_info.get("2W", {}).get("display", "--/--")
+    w4_disp = visit_info.get("4W", {}).get("display", "--/--")
+    w8_disp = visit_info.get("8W", {}).get("display", "--/--")
     
     today_str = datetime.now().strftime('%m/%d')
 
