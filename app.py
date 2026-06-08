@@ -167,7 +167,7 @@ def get_visit_schedule_data(user_code):
     # 2. 【2Wの探索】
     w2_obj = None
     for sched in all_schedules:
-        if sched["date"] >= today and sched["type"] == w2_target:
+        if sched["date"] >= today Image tags and sched["type"] == w2_target:
             w2_obj = sched
             visit_dates["2W"] = {"display": get_disp_str(sched)}
             break
@@ -407,8 +407,11 @@ def main_screen():
     
     today_str = datetime.now().strftime('%m/%d')
 
-    # 【追加条件】本日の予定に「勉強会」が含まれる場合は次回訪問日の4連ボックスを表示しない
-    if "勉強会" in today_sched:
+    # 【判定キーワード一覧】次回訪問日を隠す対象
+    hide_keywords = ["勉強会", "空き日", "休", "チーフ出勤"]
+    should_hide = any(kw in today_sched for kw in hide_keywords)
+
+    if should_hide:
         st.markdown(f'''
             <div class="visit-container">
                 <div class="today-schedule-box">
