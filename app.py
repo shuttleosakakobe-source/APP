@@ -65,13 +65,12 @@ def parse_flexible_date(date_str):
             
     return None
 
-# --- 【シート構造最適化版】次回訪問日および本日の予定を取得する関数 ---
+# --- 【周期個別ロジック版】次回訪問日および本日の予定を取得する関数 ---
 def get_visit_schedule_data(user_code):
     rows = load_sheet_data(gid="370581902")
-    if not rows or len(rows) < 3:  # 1行目コード、2行目名前なので最低3行以上必要
+    if not rows or len(rows) < 3:
         return {}, "データなし"
         
-    # 1行目から担当者コードの列インデックスを探す
     code_row = rows[0]
     user_col_idx = -1
     
@@ -96,25 +95,25 @@ def get_visit_schedule_data(user_code):
         except:
             pass
 
-    # 見つからない場合は「未登録」
     if user_col_idx == -1:
         return {}, "未登録"
         
     today = datetime.now().date()
     today_schedule = "なし"
     
-    visit_dates = {"1W": None, "2W": None, "4W": None, "8W": None}
-    type_map = {"A": "1W", "B": "2W", "C": "4W", "D": "8W"}
+    # 各周期に該当する候補日をリストで全て収集する
+    w1_candidates = []
+    w2_candidates = []
+    w4_candidates = []
+    w8_candidates = []
     
-    # 3行目（インデックス2）からスケジュールデータを走査する
     for row in rows[2:]:
         if len(row) <= user_col_idx:
             continue
         
-        date_str = row[0]          # A列の日付
-        cell_val = row[user_col_idx].strip()  # 担当者のセルの値
+        date_str = row[0]
+        cell_val = row[user_col_idx].strip()
         
-        # 日付を安全にパース
         row_date = parse_flexible_date(date_str)
         if not row_date:
             continue
@@ -124,18 +123,65 @@ def get_visit_schedule_data(user_code):
             if cell_val:
                 today_schedule = cell_val
                 
-        # 2. 次回訪問日の計算（今日以降を対象）
+        # 2. 次回訪問日の候補収集（今日以降を対象）
         if row_date >= today:
             if cell_val:
-                first_char = cell_val[0].upper()
-                if first_char in type_map:
-                    week_key = type_map[first_char]
-                    if visit_dates[week_key] is None or row_date < visit_dates[week_key]["date"]:
-                        visit_dates[week_key] = {
-                            "date": row_date,
-                            "display": f"{row_date.strftime('%m/%d')}({cell_val[1:]})" if len(cell_val) > 1 else f"{row_date.strftime('%m/%d')}"
-                        }
-                        
+                first_char = cell_val[0].upper() # セルの最初の文字 (A, B, C, D)
+                
+                # --- 1W の判定ルール ---
+                # Aなら1W(A), Bなら2W(B), Cなら3W(なし), Dなら4W(D)
+                if first_char == "A":
+                    w1_candidates.append({"date": row_date, "val": cell_val})
+                elif first_char == "B":
+                    # 1Wの考え方ではBは2W(B)の枠へ
+                    pass 
+                
+                # --- 2W の判定ルール ---
+                # Aなら1W(AかC), Bなら2W(BかD), Cなら1W(AかC), Dなら2W(BかD)
+                if first_char in ["A", "C"]:
+                    # AかCのときは1W(A)のタイミング
+                    w2_candidates.append({"date": row_date, "val": cell_val})
+                elif first_char in ["B", "D"]:
+                    # BかDのときは2W(B)のタイミング
+                    # (1W側でもBなら2W行きたいので、1WのB枠の代わりにここへ集約)
+                    w1_candidates.append({"date": row_date, "val": cell_val})
+                
+                # --- 4W / 8W の判定ルール ---
+                # 4Wと8Wはそのまま A=A, B=B, C=C, D=D で一致する日付を探す
+                # ログインしているユーザー自身のコード(A,B,C,Dどれか)とセルの一文字目が合致する場合に対象とする
+                # ※ユーザーコードが数字のみ等の場合は、見つかった列の2行目（名前・コース表記など）にA~Dが含まれるか、あるいは全日程を収集して後方互換を保つ
+                # ここでは単純に同じ文字パターン（A~Dのいずれか）として候補へ追加
+                w4_candidates.append({"date": row_date, "val": cell_val, "type": first_char})
+                w8_candidates.append({"date": row_date, "val": cell_val, "type": first_char})
+
+    # 日付の近い順（昇順）にソート
+    w1_candidates.sort(key=lambda x: x["date"])
+    w2_candidates.sort(key=lambda x: x["date"])
+    w4_candidates.sort(key=lambda x: x["date"])
+    w8_candidates.sort(key=lambda x: x["date"])
+
+    visit_dates = {"1W": None, "2W": None, "4W": None, "8W": None}
+
+    # 一番近い日付をセットする関数
+    def get_disp_str(item):
+        d = item["date"]
+        v = item["val"]
+        return f"{d.strftime('%m/%d')}({v[1:]})" if len(v) > 1 else f"{d.strftime('%m/%d')}"
+
+    # 1W, 2W はそれぞれの候補の一番近い日付
+    if w1_candidates: visit_dates["1W"] = {"display": get_disp_str(w1_candidates[0])}
+    if w2_candidates: visit_dates["2W"] = {"display": get_disp_str(w2_candidates[0])}
+    
+    # 4W は一番近い日付
+    if w4_candidates: visit_dates["4W"] = {"display": get_disp_str(w4_candidates[0])}
+    
+    # 8W は「2番目に近い日付」を表示
+    if len(w8_candidates) >= 2:
+        visit_dates["8W"] = {"display": get_disp_str(w8_candidates[1])} # インデックス1が2番目
+    elif len(w8_candidates) == 1:
+        # 1つしか無い場合はそれを表示
+        visit_dates["8W"] = {"display": get_disp_str(w8_candidates[0])}
+
     return visit_dates, today_schedule
 
 # --- 3. 画像をHTML化する関数 ---
