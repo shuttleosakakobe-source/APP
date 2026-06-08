@@ -5,7 +5,7 @@ import urllib.request
 import csv
 import io
 import json
-import re  # 正規表現を追加
+import re
 from datetime import datetime
 from streamlit_javascript import st_javascript 
 
@@ -36,39 +36,48 @@ def load_sheet_data(gid="0"):
     except:
         return None
 
-# --- 【超強化・日付解析関数】 ---
+# --- 【日本語年月日対応版】日付解析関数 ---
 def parse_flexible_date(date_str):
-    """スプレッドシートのあらゆる日付形式をdatetime.date型に安全に変換する"""
+    """「2026年6月1日」などの日本語形式を含め、安全にdatetime.date型に変換する"""
     if not date_str:
         return None
-    # 余分な空白や時間を除去
-    cleaned = str(date_str).strip().split(" ")[0]
-    # ハイフン区切り、スラッシュ区切り両方に対応
-    cleaned = cleaned.replace("-", "/")
     
-    # yyyy/mm/dd の形式になっているかチェック
-    match = re.match(r'^(\d{4})/(\d{1,2})/(\d{1,2})', cleaned)
-    if match:
+    cleaned = str(date_str).strip().split(" ")[0]
+    
+    # パターン1: 「2026年6月1日」や「2026年06月01日」の形式
+    match_jp = re.match(r'^(\d{4})年(\d{1,2})月(\d{1,2})日', cleaned)
+    if match_jp:
         try:
-            year, month, day = map(int, match.groups())
+            year, month, day = map(int, match_jp.groups())
             return datetime(year, month, day).date()
         except:
             return None
+            
+    # パターン2: 通常の「/」や「-」区切り
+    cleaned = cleaned.replace("-", "/")
+    match_slash = re.match(r'^(\d{4})/(\d{1,2})/(\d{1,2})', cleaned)
+    if match_slash:
+        try:
+            year, month, day = map(int, match_slash.groups())
+            return datetime(year, month, day).date()
+        except:
+            return None
+            
     return None
 
-# --- 【超強化版】次回訪問日および本日の予定を取得する関数 ---
+# --- 【シート構造最適化版】次回訪問日および本日の予定を取得する関数 ---
 def get_visit_schedule_data(user_code):
     rows = load_sheet_data(gid="370581902")
-    if not rows or len(rows) < 2:
+    if not rows or len(rows) < 3:  # 1行目コード、2行目名前なので最低3行以上必要
         return {}, "データなし"
         
-    header = rows[0]
+    # 1行目から担当者コードの列インデックスを探す
+    code_row = rows[0]
     user_col_idx = -1
     
-    # 担当者コードの一致チェック (文字列、数値、前後の空白、ゼロ埋めを考慮)
     target_code = str(user_code).strip().lower()
     
-    for idx, col in enumerate(header):
+    for idx, col in enumerate(code_row):
         col_str = str(col).strip().lower()
         if col_str == target_code or col_str.split('.')[0] == target_code.split('.')[0]:
             user_col_idx = idx
@@ -77,7 +86,7 @@ def get_visit_schedule_data(user_code):
     if user_col_idx == -1:
         try:
             target_int = int(float(user_code))
-            for idx, col in enumerate(header):
+            for idx, col in enumerate(code_row):
                 try:
                     if int(float(col)) == target_int:
                         user_col_idx = idx
@@ -97,12 +106,13 @@ def get_visit_schedule_data(user_code):
     visit_dates = {"1W": None, "2W": None, "4W": None, "8W": None}
     type_map = {"A": "1W", "B": "2W", "C": "4W", "D": "8W"}
     
-    for row in rows[1:]:
+    # 3行目（インデックス2）からスケジュールデータを走査する
+    for row in rows[2:]:
         if len(row) <= user_col_idx:
             continue
         
-        date_str = row[0]
-        cell_val = row[user_col_idx].strip()
+        date_str = row[0]          # A列の日付
+        cell_val = row[user_col_idx].strip()  # 担当者のセルの値
         
         # 日付を安全にパース
         row_date = parse_flexible_date(date_str)
