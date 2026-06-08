@@ -35,7 +35,7 @@ def load_sheet_data(gid="0"):
     except:
         return None
 
-# --- 【機能拡張】次回訪問日および本日の予定を取得する関数 ---
+# --- 次回訪問日および本日の予定を取得する関数 ---
 def get_visit_schedule_data(user_code):
     rows = load_sheet_data(gid="370581902")
     if not rows or len(rows) < 2:
@@ -52,11 +52,8 @@ def get_visit_schedule_data(user_code):
         return {}, "未登録"
         
     today = datetime.now().date()
-    
-    # 本日の予定用変数
     today_schedule = "なし"
     
-    # 次回訪問日用
     visit_dates = {"1W": None, "2W": None, "4W": None, "8W": None}
     type_map = {"A": "1W", "B": "2W", "C": "4W", "D": "8W"}
     
@@ -105,109 +102,3 @@ def get_img_html(file_name, emoji, alert=False, width="100%"):
     if os.path.exists(file_name):
         with open(file_name, "rb") as f:
             data = base64.b64encode(f.read()).decode()
-        img_code = f'data:image/png;base64,{data}'
-        return f'<img src="{img_code}" style="width:{width}; aspect-ratio:1/1; object-fit:contain; border-radius:15px; border:{border}; {shadow}; display: block; margin: 0 auto;">'
-    return f'<div style="width:{width}; aspect-ratio:1/1; background:#f0f2f6; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:40px; border:{border}; {shadow}; margin: 0 auto;">{emoji}</div>'
-
-# --- 4. ログイン維持用関数 ---
-def set_login_storage(name, url, alert, role, code):
-    st_javascript(f"localStorage.setItem('shuttle_user_name', '{name}');")
-    st_javascript(f"localStorage.setItem('shuttle_user_url', '{url}');")
-    st_javascript(f"localStorage.setItem('shuttle_needs_alert', '{alert}');")
-    st_javascript(f"localStorage.setItem('shuttle_user_role', '{role}');")
-    st_javascript(f"localStorage.setItem('shuttle_user_code', '{code}');")
-
-def get_login_storage():
-    name = st_javascript("localStorage.getItem('shuttle_user_name');")
-    url = st_javascript("localStorage.getItem('shuttle_user_url');")
-    alert = st_javascript("localStorage.getItem('shuttle_needs_alert');")
-    role = st_javascript("localStorage.getItem('shuttle_user_role');")
-    code = st_javascript("localStorage.getItem('shuttle_user_code');")
-    return name, url, alert, role, code
-
-# --- 5. 強制アイコン＆ダウンロードブロック関数 ---
-def inject_pwa_blocker():
-    if os.path.exists("icon.png"):
-        with open("icon.png", "rb") as f:
-            icon_data = base64.b64encode(f.read()).decode()
-        
-        block_html = f'''
-            <script>
-                const links = parent.document.getElementsByTagName("link");
-                for (let link of links) {{
-                    if (link.rel === "manifest" || link.href.includes("manifest")) {{
-                        link.href = "data:application/json;base64,e30=";
-                    }}
-                }}
-                let appleLink = parent.document.querySelector("link[rel='apple-touch-icon']");
-                if (!appleLink) {{
-                    appleLink = parent.document.createElement("link");
-                    appleLink.rel = "apple-touch-icon";
-                    parent.document.head.appendChild(appleLink);
-                }}
-                appleLink.href = "data:image/png;base64,{icon_data}";
-
-                let iconLink = parent.document.querySelector("link[sizes='192x192']");
-                if (!iconLink) {{
-                    iconLink = parent.document.createElement("link");
-                    iconLink.rel = "icon";
-                    iconLink.sizes = "192x192";
-                    parent.document.head.appendChild(iconLink);
-                }}
-                iconLink.href = "data:image/png;base64,{icon_data}";
-            </script>
-        '''
-        st.components.v1.html(block_html, height=0, width=0)
-
-# --- 直接スプレッドシート（GAS）にデータをPOST送信する関数 ---
-def submit_attendance_direct(status):
-    user_code = st.session_state.get('user_code', '')
-    user_name = st.session_state.get('user_name', '')
-    
-    payload = {
-        "code": user_code,
-        "name": user_name,
-        "status": status
-    }
-    
-    data = json.dumps(payload).encode('utf-8')
-    req = urllib.request.Request(
-        GAS_WEBAPP_URL, 
-        data=data, 
-        headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
-    )
-    
-    try:
-        with urllib.request.urlopen(req) as response:
-            res_body = json.loads(response.read().decode('utf-8'))
-            if res_body.get("status") == "success":
-                st.toast(f"🎉 {status} を記録しました！", icon="✅")
-            else:
-                st.error(f"記録失敗: {res_body.get('message')}")
-    except Exception as e:
-        st.error("スプレッドシートとの直接通信に失敗しました。")
-
-# --- 6. メイン画面 ---
-def main_screen():
-    inject_pwa_blocker() 
-
-    st.markdown("""
-        <style>
-        header {visibility: hidden; height: 0px !important;}
-        .block-container { padding-top: 1.5rem !important; padding-bottom: 2rem !important; max-width: 500px; }
-        [data-testid="stVerticalBlock"] { gap: 1.2rem !important; }
-        .user-label-btn { text-align: right; margin-bottom: 5px; }
-        .user-label-btn button {
-            background: none !important;
-            border: none !important;
-            color: #666 !important;
-            font-size: 13px !important;
-            font-weight: bold !important;
-            padding: 0 !important;
-            margin-left: auto !important;
-            display: block !important;
-            box-shadow: none !important;
-        }
-        .button-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 15px 0; }
-        @media (max-width: 600px) { .button-grid { grid-template-columns: repeat(2, 1fr); } }
-        .btn-
