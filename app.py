@@ -130,7 +130,6 @@ def get_visit_schedule_data(user_code):
     all_schedules.sort(key=lambda x: x["date"])
     
     # ユーザー自身の現在のベースコース（今日以降で最初に現れるスケジュールの一文字目）を特定する
-    # 例: 今日以降で最初に「A火」があればベースは "A" と判定
     current_base_type = "A" 
     for sched in all_schedules:
         if sched["date"] >= today:
@@ -138,7 +137,6 @@ def get_visit_schedule_data(user_code):
             break
 
     # ベースコース（例:A）に基づく各枠のターゲット文字の決定
-    # A ➔ B ➔ C ➔ A ➔ A の順に変遷するルール
     cycle_order = ["A", "B", "C", "D"]
     try:
         base_idx = cycle_order.index(current_base_type)
@@ -158,7 +156,7 @@ def get_visit_schedule_data(user_code):
         v = sched_obj["val"]
         return f"{d.strftime('%m/%d')}({v[1:]})" if len(v) > 1 else f"{d.strftime('%m/%d')}"
 
-    # 1. 【1Wの探索】今日以降で、最初の w1_target
+    # 1. 【1Wの探索】
     w1_obj = None
     for sched in all_schedules:
         if sched["date"] >= today and sched["type"] == w1_target:
@@ -166,7 +164,7 @@ def get_visit_schedule_data(user_code):
             visit_dates["1W"] = {"display": get_disp_str(sched)}
             break
             
-    # 2. 【2Wの探索】今日以降で、最初の w2_target
+    # 2. 【2Wの探索】
     w2_obj = None
     for sched in all_schedules:
         if sched["date"] >= today and sched["type"] == w2_target:
@@ -174,7 +172,7 @@ def get_visit_schedule_data(user_code):
             visit_dates["2W"] = {"display": get_disp_str(sched)}
             break
 
-    # 3. 【4Wの探索】2W（w2_target）の日付以降で、最初の w4_target (ベースコース)
+    # 3. 【4Wの探索】
     w4_obj = None
     if w2_obj:
         for sched in all_schedules:
@@ -183,21 +181,19 @@ def get_visit_schedule_data(user_code):
                 visit_dates["4W"] = {"display": get_disp_str(sched)}
                 break
     else:
-        # 万が一2Wが見つからない場合は今日以降で探索
         for sched in all_schedules:
             if sched["date"] >= today and sched["type"] == w4_target:
                 w4_obj = sched
                 visit_dates["4W"] = {"display": get_disp_str(sched)}
                 break
 
-    # 4. 【8Wの探索】4Wの日付以降で、最初の w8_target (ベースコース)
+    # 4. 【8Wの探索】
     if w4_obj:
         for sched in all_schedules:
             if sched["date"] > w4_obj["date"] and sched["type"] == w8_target:
                 visit_dates["8W"] = {"display": get_disp_str(sched)}
                 break
 
-    # フォールバック（見つからない項目へのハイフン表示処理）
     for k in visit_dates:
         if visit_dates[k] is None:
             visit_dates[k] = {"display": "--/--"}
@@ -411,21 +407,32 @@ def main_screen():
     
     today_str = datetime.now().strftime('%m/%d')
 
-    st.markdown(f'''
-        <div class="visit-container">
-            <div class="visit-title">📅 次回訪問日</div>
-            <div class="visit-grid">
-                <div class="visit-box"><div class="visit-label">1W</div><div class="visit-date">{w1_disp}</div></div>
-                <div class="visit-box"><div class="visit-label">2W</div><div class="visit-date">{w2_disp}</div></div>
-                <div class="visit-box"><div class="visit-label">4W</div><div class="visit-date">{w4_disp}</div></div>
-                <div class="visit-box"><div class="visit-label">8W</div><div class="visit-date">{w8_disp}</div></div>
+    # 【追加条件】本日の予定に「勉強会」が含まれる場合は次回訪問日の4連ボックスを表示しない
+    if "勉強会" in today_sched:
+        st.markdown(f'''
+            <div class="visit-container">
+                <div class="today-schedule-box">
+                    <span class="today-title">📌 本日の予定 ({today_str})</span>
+                    <span class="today-val">{today_sched}</span>
+                </div>
             </div>
-            <div class="today-schedule-box">
-                <span class="today-title">📌 本日の予定 ({today_str})</span>
-                <span class="today-val">{today_sched}</span>
+        ''', unsafe_allow_html=True)
+    else:
+        st.markdown(f'''
+            <div class="visit-container">
+                <div class="visit-title">📅 次回訪問日</div>
+                <div class="visit-grid">
+                    <div class="visit-box"><div class="visit-label">1W</div><div class="visit-date">{w1_disp}</div></div>
+                    <div class="visit-box"><div class="visit-label">2W</div><div class="visit-date">{w2_disp}</div></div>
+                    <div class="visit-box"><div class="visit-label">4W</div><div class="visit-date">{w4_disp}</div></div>
+                    <div class="visit-box"><div class="visit-label">8W</div><div class="visit-date">{w8_disp}</div></div>
+                </div>
+                <div class="today-schedule-box">
+                    <span class="today-title">📌 本日の予定 ({today_str})</span>
+                    <span class="today-val">{today_sched}</span>
+                </div>
             </div>
-        </div>
-    ''', unsafe_allow_html=True)
+        ''', unsafe_allow_html=True)
 
     # --- 🕒 【隠し機能】スイッチONの時だけ表示される打刻エリア ---
     if st.session_state.get('show_timecard', False):
