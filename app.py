@@ -6,7 +6,7 @@ import csv
 import io
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from streamlit_javascript import st_javascript 
 
 # --- 1. ページ設定 ---
@@ -187,10 +187,11 @@ def get_visit_schedule_data(user_code):
                 visit_dates["4W"] = {"display": get_disp_str(sched)}
                 break
 
-    # 4. 【8Wの探索】4W（w4_target）の日付より「厳密に未来」で最初の w8_target (A)
+    # 4. 【8Wの探索】4Wの予定日から「2週間（14日）以上先」の最初の w8_target (A) を探す
     if w4_obj:
+        target_after_2w = w4_obj["date"] + timedelta(days=14)
         for sched in all_schedules:
-            if sched["date"] > w4_obj["date"] and sched["type"] == w8_target:
+            if sched["date"] >= target_after_2w and sched["type"] == w8_target:
                 visit_dates["8W"] = {"display": get_disp_str(sched)}
                 break
 
