@@ -36,11 +36,10 @@ def load_sheet_data(gid="0"):
     except:
         return None
 
-# --- 名前比較用のクレンジング関数（空白を完全に除去する） ---
+# --- 名前比較用のクレンジング関数 ---
 def clean_name(name_str):
     if not name_str:
         return ""
-    # 全角・半角スペース、タブ、改行をすべて消し去る
     return re.sub(r'[\s\u3000]+', '', str(name_str).strip())
 
 # --- 日付解析関数 ---
@@ -307,22 +306,25 @@ def main_screen():
     header = data_raw[0]
     data = [dict(zip(header, row)) for row in data_raw[1:]]
     
-    # 【最重要修正】スペースを完全に無視してユーザーデータをスプレッドシートから特定する
-    current_user_data = next((r for r in data if clean_name(r.get('担当者名')) == clean_name(st.session_state.user_name)), None)
+    # 【同期ロジック強化】名前のテキスト直接比較ではなく、セッションに入っているコード（またはクレンジング名）でマスタから再引当て
+    current_user_data = None
+    if st.session_state.get('user_code'):
+        tgt_code = str(st.session_state.user_code).strip().split('.')[0]
+        current_user_data = next((r for r in data if str(r.get('担当者コード')).strip().split('.')[0] == tgt_code), None)
+        
+    if not current_user_data and st.session_state.get('user_name'):
+        current_user_data = next((r for r in data if clean_name(r.get('担当者名')) == clean_name(st.session_state.user_name)), None)
     
     if current_user_data:
         vals = list(current_user_data.values())
+        st.session_state.user_name = str(current_user_data.get('担当者名')).strip()
         st.session_state.user_code = str(current_user_data.get('担当者コード')).strip().split('.')[0]
         st.session_state.user_role = str(current_user_data.get('ロール','2')).strip().split('.')[0]
         st.session_state.user_url = str(current_user_data.get('URL')).strip()
         st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
-    else:
-        # 万が一マッチしなかった場合の保険として、保持しているコードをそのまま活かす
-        if 'user_role' not in st.session_state:
-            st.session_state.user_role = "2"
 
     st.markdown('<div class="user-label-btn">', unsafe_allow_html=True)
-    if st.button(f"👤 {st.session_state.user_name} さん", key="hidden_toggle"):
+    if st.button(f"👤 {st.session_state.get('user_name', 'ゲスト')} さん", key="hidden_toggle"):
         st.session_state.show_timecard = not st.session_state.get('show_timecard', False)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -337,7 +339,7 @@ def main_screen():
     ''', unsafe_allow_html=True)
 
     # --- 「次回訪問日」＆「本日の予定」表示 ---
-    visit_info, today_sched = get_visit_schedule_data(st.session_state.user_code)
+    visit_info, today_sched = get_visit_schedule_data(st.session_state.get('user_code', ''))
     
     w1_disp = visit_info.get("1W", {}).get("display", "--/--")
     w2_disp = visit_info.get("2W", {}).get("display", "--/--")
@@ -386,8 +388,8 @@ def main_screen():
             if st.button("🌃 退社", use_container_width=True): submit_attendance_direct("退社")
         st.write("---")
 
-    # 👑 管理者判定
-    if str(st.session_state.user_role) == "1":
+    # 👑 管理者判定（確実な同期の後にジャッジ）
+    if str(st.session_state.get('user_role', '2')) == "1":
         check_sheet_rows = load_sheet_data(gid="1552856942")
         check_alert = False
         if check_sheet_rows and len(check_sheet_rows) >= 2:
@@ -437,14 +439,14 @@ def main_screen():
 
     # 🔘 メインボタン 4つ
     b1 = get_img_html("3.png", "📄")
-    b2 = get_img_html("4.png", "📋", alert=st.session_state.needs_alert)
+    b2 = get_img_html("4.png", "📋", alert=st.session_state.get('needs_alert', False))
     b4 = get_img_html("5.png", "🧽")
     b5 = get_img_html("image_d3349a.png", "🎓")
 
     grid_html = f'''
         <div class="button-grid">
             <a class="btn-item" href="https://docs.google.com/forms/d/e/1FAIpQLSc4E3L_UJkVxMMSTOYgcw3SJyoBixHoJfhe0WC-x1wbK6lsHw/viewform?usp=sharing" target="_blank">{b1}<p class="btn-text" style="margin-top:6px;">メンテナンス<br>入力</p></a>
-            <a class="btn-item" href="{st.session_state.user_url}" target="_blank">{b2}<p class="btn-text" style="margin-top:6px;">メンテナンス<br>確認</p></a>
+            <a class="btn-item" href="{st.session_state.get('user_url', '#')}" target="_blank">{b2}<p class="btn-text" style="margin-top:6px;">メンテナンス<br>確認</p></a>
             <a class="btn-item" href="https://docs.google.com/forms/d/1t_3QDu1sOFXdBvwRzIuwdI1yT0Ez_AunIEXKz_Bds3c/edit#responses" target="_blank">{b4}<p class="btn-text" style="margin-top:6px;">スポンジ<br>キャンペーン入力</p></a>
             <a class="btn-item" href="https://drive.google.com/drive/folders/1vZE__7Th8RuVtkNQpG-rAZSBtAvG7cTX" target="_blank">{b5}<p class="btn-text" style="margin-top:6px;">勉強会<br>資料</p></a>
         </div>
@@ -470,10 +472,12 @@ if 'manual_logout' not in st.session_state: st.session_state.manual_logout = Fal
 if not st.session_state.login_status and not st.session_state.manual_logout:
     stored = get_login_storage()
     if stored and str(stored[0]) not in ["None", "null", "0", "undefined", ""]:
+        # タイムラグ対策として、まずlocalStorage内の値を即時仮セット
         st.session_state.user_name = str(stored[0]).strip()
-        # ブラウザにロールの記憶があれば、保険としてまずそれを適用しておく
         if stored[3] and str(stored[3]) not in ["None", "null", "undefined"]:
             st.session_state.user_role = str(stored[3]).strip().split('.')[0]
+        if stored[4] and str(stored[4]) not in ["None", "null", "undefined"]:
+            st.session_state.user_code = str(stored[4]).strip().split('.')[0]
         st.session_state.login_status = True
 
 if st.session_state.login_status:
