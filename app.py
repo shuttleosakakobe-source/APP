@@ -139,7 +139,8 @@ def get_visit_schedule_data(user_code):
             
     w2_obj = None
     for sched in all_schedules:
-        if sched["date"] >= today && sched["type"] == w2_target:
+        # 🛠️ ここを and に修正しました！
+        if sched["date"] >= today and sched["type"] == w2_target:
             w2_obj = sched
             visit_dates["2W"] = {"display": get_disp_str(sched)}
             break
@@ -389,7 +390,7 @@ def main_screen():
 # --- 7. 実行ロジック ---
 if 'login_status' not in st.session_state: st.session_state.login_status = False
 
-# 画面描画の分岐 (自動ログイン処理は完全に削除)
+# 画面描画の分岐
 if st.session_state.login_status:
     main_screen()
 else:
@@ -403,14 +404,12 @@ else:
             h = raw[0]
             rows = [dict(zip(h, r)) for r in raw[1:]]
             
-            # 手動入力された情報をもとに、マスタから厳密にユーザーを特定
             user = next((r for r in rows if str(r.get('担当者コード')).strip().split('.')[0] == u_code.split('.')[0] and str(r.get('パスワード')).strip() == u_pass), None)
             if user:
                 vals = list(user.values())
                 st.session_state.user_name = str(user.get('担当者名')).strip()
                 st.session_state.user_url = str(user.get('URL')).strip()
                 st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", ""])
-                # 💡ログイン時にG列の「ロール」を1回で確実にセッションへ格納します
                 st.session_state.user_role = str(user.get('ロール','2')).strip().split('.')[0]
                 st.session_state.user_code = str(u_code).split('.')[0]
                 st.session_state.login_status = True
