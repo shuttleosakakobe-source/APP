@@ -135,7 +135,6 @@ def get_visit_schedule_data(user_code):
             
     w2_obj = None
     for sched in all_schedules:
-        # 【修正箇所】「Image」という余計な文字を削除しました
         if sched["date"] >= today and sched["type"] == w2_target:
             w2_obj = sched
             visit_dates["2W"] = {"display": get_disp_str(sched)}
@@ -443,15 +442,19 @@ def main_screen():
     with col1:
         if os.path.exists("6.png"): st.image("6.png", width=110)
     with col2:
+        # 🚪 【ログアウト処理の大修正】
         if st.button("🚪 ログアウト", use_container_width=True):
-            st_javascript("localStorage.clear();")
-            st.session_state.clear()
+            st_javascript("localStorage.clear();") # ブラウザの記憶を全削除
+            st.session_state.clear()               # サーバーのセッションも全削除
+            st.session_state.manual_logout = True  # 【超重要】引き戻しブロック用フラグを立てる
             st.rerun()
 
 # --- 7. 実行ロジック ---
 if 'login_status' not in st.session_state: st.session_state.login_status = False
+if 'manual_logout' not in st.session_state: st.session_state.manual_logout = False
 
-if not st.session_state.login_status:
+# ブラウザの保存データから復帰を試みる (ログアウト直後でなければ)
+if not st.session_state.login_status and not st.session_state.manual_logout:
     stored = get_login_storage()
     if stored and str(stored[0]) not in ["None", "null", "0", "undefined", ""]:
         st.session_state.user_name = str(stored[0]).strip()
@@ -479,6 +482,7 @@ else:
             st.session_state.user_role = str(user.get('ロール','2')).strip().split('.')[0]
             st.session_state.user_code = str(u_code).split('.')[0]
             st.session_state.login_status = True
+            st.session_state.manual_logout = False # ログインに成功したらログアウト状態をクリア
             set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role, st.session_state.user_code)
             st.rerun()
         else:
