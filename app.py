@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit st
 import os
 import base64
 import urllib.request
@@ -536,57 +536,38 @@ def main_screen():
 if 'login_status' not in st.session_state: st.session_state.login_status = False
 if 'logout_requested' not in st.session_state: st.session_state.logout_requested = False
 
-# 💡 【ログイン維持・リロード対応】最初にlocalStorageの値を安全に復元する
 if not st.session_state.login_status and not st.session_state.logout_requested:
     stored = get_login_storage()
-    
-    # JavaScriptの通信完了を待機する安全用のチェック
-    if stored is not None:
-        name, url, alert, role, code = stored
-        
-        # 文字列の 'None' などの無効な値でないかを厳密に判定
-        if name and str(name) not in ["None", "null", "0", "undefined", ""]:
-            st.session_state.user_name = str(name)
-            st.session_state.user_url = str(url)
-            st.session_state.needs_alert = (str(alert) == 'True')
-            st.session_state.user_role = str(role)
-            st.session_state.user_code = str(code) if code else ""
-            st.session_state.login_status = True
-            st.rerun()
+    if stored and str(stored[0]) not in ["None", "null", "0", "undefined", ""]:
+        st.session_state.user_name = str(stored[0])
+        st.session_state.user_url = str(stored[1])
+        st.session_state.needs_alert = (str(stored[2]) == 'True')
+        st.session_state.user_role = str(stored[3])
+        st.session_state.user_code = str(stored[4]) if len(stored) >= 5 else ""
+        st.session_state.login_status = True
+        st.rerun()
 
-# 画面表示の切り替え
 if st.session_state.login_status:
-    # 💡 ログイン状態を維持していればメイン表示へ。読み込む度に最新データにリフレッシュされます
     main_screen()
 else:
-    # ログイン画面表示
     inject_pwa_blocker() 
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
-    
-    u_code = st.text_input("担当者コード", key="login_u_code").strip()
-    u_pass = st.text_input("パスワード", type="password", key="login_u_pass").strip()
-    
+    u_code = st.text_input("担当者コード").strip()
+    u_pass = st.text_input("パスワード", type="password").strip()
     if st.button("ログイン", type="primary", use_container_width=True):
         raw = load_sheet_data(gid="0")
-        if raw:
-            h = raw[0]
-            rows = [dict(zip(h, r)) for r in raw[1:]]
-            user = next((r for r in rows if str(r.get('担当者コード')).strip() == u_code and str(r.get('パスワード')).strip() == u_pass), None)
-            
-            if user:
-                vals = list(user.values())
-                st.session_state.user_name = user.get('担当者名')
-                st.session_state.user_url = user.get('URL')
-                st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", ""])
-                st.session_state.user_role = str(vals[6]).strip() if len(vals) >= 7 else "2"
-                st.session_state.user_code = u_code
-                st.session_state.login_status = True
-                st.session_state.logout_requested = False
-                
-                # ブラウザ側のストレージにセット
-                set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role, st.session_state.user_code)
-                st.rerun()
-            else:
-                st.error("認証失敗")
-        else:
-            st.error("マスターデータの読み込みに失敗しました")
+        h = raw[0]
+        rows = [dict(zip(h, r)) for r in raw[1:]]
+        user = next((r for r in rows if str(r.get('担当者コード')).strip() == u_code and str(r.get('パスワード')).strip() == u_pass), None)
+        if user:
+            vals = list(user.values())
+            st.session_state.user_name = user.get('担当者名')
+            st.session_state.user_url = user.get('URL')
+            st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", ""])
+            st.session_state.user_role = str(vals[6]).strip() if len(vals) >= 7 else "2"
+            st.session_state.user_code = u_code
+            st.session_state.login_status = True
+            st.session_state.logout_requested = False
+            set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role, st.session_state.user_code)
+            st.rerun()
+        else: st.error("認証失敗")
