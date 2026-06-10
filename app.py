@@ -20,6 +20,7 @@ st.set_page_config(
 GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwMUBZHk4bIrpNmopGkk2huKLdkhdzFynxqSuDxfRD_9mcIFet_osyQIg4V-CKovfQu/exec"
 
 # --- 2. スプレッドシート取得関数 ---
+# キャッシュを「なし(ttl=0)」にすることで、関数が呼ばれるたびに必ず最新データを読み込みます
 @st.cache_data(ttl=0)
 def load_sheet_data(gid="0"):
     base_url = "https://docs.google.com/spreadsheets/d/1cPgQ3Ej3P7JZPaxprFQnbnDkCatQ15lEHyF9C9tMgZ4/export?format=csv&gid="
@@ -38,13 +39,9 @@ def load_sheet_data(gid="0"):
 
 # --- 【日本語年月日対応版】日付解析関数 ---
 def parse_flexible_date(date_str):
-    """「2026年6月1日」などの日本語形式を含め、安全にdatetime.date型に変換する"""
     if not date_str:
         return None
-    
     cleaned = str(date_str).strip().split(" ")[0]
-    
-    # パターン1: 「2026年6月1日」や「2026年06月01日」の形式
     match_jp = re.match(r'^(\d{4})年(\d{1,2})月(\d{1,2})日', cleaned)
     if match_jp:
         try:
@@ -52,8 +49,6 @@ def parse_flexible_date(date_str):
             return datetime(year, month, day).date()
         except:
             return None
-            
-    # パターン2: 通常の「/」や「-」区切り
     cleaned = cleaned.replace("-", "/")
     match_slash = re.match(r'^(\d{4})/(\d{1,2})/(\d{1,2})', cleaned)
     if match_slash:
@@ -62,7 +57,6 @@ def parse_flexible_date(date_str):
             return datetime(year, month, day).date()
         except:
             return None
-            
     return None
 
 # --- 【新ロジック：数珠つなぎサイクル版】次回訪問日および本日の予定を取得する関数 ---
@@ -73,7 +67,6 @@ def get_visit_schedule_data(user_code):
         
     code_row = rows[0]
     user_col_idx = -1
-    
     target_code = str(user_code).strip().lower()
     
     for idx, col in enumerate(code_row):
@@ -100,63 +93,51 @@ def get_visit_schedule_data(user_code):
         
     today = datetime.now().date()
     today_schedule = "なし"
-    
-    # 全データ行から、有効な日付とセルの値を集めて日付順に並べる
     all_schedules = []
     
     for row in rows[2:]:
         if len(row) <= user_col_idx:
             continue
-        
         date_str = row[0]
         cell_val = row[user_col_idx].strip()
-        
         row_date = parse_flexible_date(date_str)
         if not row_date:
             continue
-            
-        # 本日の予定チェック
         if row_date == today and cell_val:
             today_schedule = cell_val
-            
         if cell_val:
             all_schedules.append({
                 "date": row_date,
                 "val": cell_val,
-                "type": cell_val[0].upper()  # 'A', 'B', 'C', 'D'
+                "type": cell_val[0].upper()
             })
             
-    # 日付順に並び替え
     all_schedules.sort(key=lambda x: x["date"])
     
-    # ユーザー自身の現在のベースコース（今日以降で最初に現れるスケジュールの一文字目）を特定する
     current_base_type = "A" 
     for sched in all_schedules:
         if sched["date"] >= today:
             current_base_type = sched["type"]
             break
 
-    # ベースコース（例:A）に基づく各枠のターゲット文字の決定
     cycle_order = ["A", "B", "C", "D"]
     try:
         base_idx = cycle_order.index(current_base_type)
     except:
         base_idx = 0
         
-    w1_target = cycle_order[(base_idx + 1) % 4]  # AならB
-    w2_target = cycle_order[(base_idx + 2) % 4]  # AならC
-    w4_target = current_base_type                # AならA
-    w8_target = current_base_type                # AならA
+    w1_target = cycle_order[(base_idx + 1) % 4]
+    w2_target = cycle_order[(base_idx + 2) % 4]
+    w4_target = current_base_type
+    w8_target = current_base_type
 
     visit_dates = {"1W": None, "2W": None, "4W": None, "8W": None}
     
-    # 表示用の文字整形関数
     def get_disp_str(sched_obj):
         d = sched_obj["date"]
         v = sched_obj["val"]
         return f"{d.strftime('%m/%d')}({v[1:]})" if len(v) > 1 else f"{d.strftime('%m/%d')}"
 
-    # 1. 【1Wの探索】今日以降で最初の w1_target
     w1_obj = None
     for sched in all_schedules:
         if sched["date"] >= today and sched["type"] == w1_target:
@@ -164,7 +145,6 @@ def get_visit_schedule_data(user_code):
             visit_dates["1W"] = {"display": get_disp_str(sched)}
             break
             
-    # 2. 【2Wの探索】今日以降で最初の w2_target
     w2_obj = None
     for sched in all_schedules:
         if sched["date"] >= today and sched["type"] == w2_target:
@@ -172,7 +152,6 @@ def get_visit_schedule_data(user_code):
             visit_dates["2W"] = {"display": get_disp_str(sched)}
             break
 
-    # 3. 【4Wの探索】2W（w2_target）の日付より未来で最初の w4_target (A)
     w4_obj = None
     if w2_obj:
         for sched in all_schedules:
@@ -187,7 +166,6 @@ def get_visit_schedule_data(user_code):
                 visit_dates["4W"] = {"display": get_disp_str(sched)}
                 break
 
-    # 4. 【8Wの探索】4Wの予定日から「2週間（14日）以上先」の最初の w8_target (A) を探す
     if w4_obj:
         target_after_2w = w4_obj["date"] + timedelta(days=14)
         for sched in all_schedules:
@@ -373,6 +351,10 @@ def main_screen():
     """, unsafe_allow_html=True)
 
     data_raw = load_sheet_data(gid="0")
+    if not data_raw:
+        st.error("スプレッドシートの読み込みに失敗しました。時間をおいて再度お試しください。")
+        return
+        
     header = data_raw[0]
     data = [dict(zip(header, row)) for row in data_raw[1:]]
     
@@ -408,7 +390,6 @@ def main_screen():
     
     today_str = datetime.now().strftime('%m/%d')
 
-    # 【判定キーワード一覧】次回訪問日を隠す対象
     hide_keywords = ["勉強会", "空き日", "休", "チーフ出勤"]
     should_hide = any(kw in today_sched for kw in hide_keywords)
 
@@ -536,6 +517,7 @@ def main_screen():
 if 'login_status' not in st.session_state: st.session_state.login_status = False
 if 'logout_requested' not in st.session_state: st.session_state.logout_requested = False
 
+# 自動ログイン処理
 if not st.session_state.login_status and not st.session_state.logout_requested:
     stored = get_login_storage()
     if stored and str(stored[0]) not in ["None", "null", "0", "undefined", ""]:
@@ -545,9 +527,12 @@ if not st.session_state.login_status and not st.session_state.logout_requested:
         st.session_state.user_role = str(stored[3])
         st.session_state.user_code = str(stored[4]) if len(stored) >= 5 else ""
         st.session_state.login_status = True
-        st.rerun()
+        # ここでの st.rerun() 無限ループを回避するため、一回限りの読み込みにする
 
 if st.session_state.login_status:
+    # メイン画面を描画するたびに古い内部キャッシュをクリア。
+    # これにより、st.rerun()を使わずに「開いた瞬間に最新のスプレッドシートを読む」動作を実現
+    st.cache_data.clear()
     main_screen()
 else:
     inject_pwa_blocker() 
@@ -555,6 +540,7 @@ else:
     u_code = st.text_input("担当者コード").strip()
     u_pass = st.text_input("パスワード", type="password").strip()
     if st.button("ログイン", type="primary", use_container_width=True):
+        st.cache_data.clear()
         raw = load_sheet_data(gid="0")
         h = raw[0]
         rows = [dict(zip(h, r)) for r in raw[1:]]
