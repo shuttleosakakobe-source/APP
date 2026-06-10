@@ -141,7 +141,8 @@ def get_visit_schedule_data(user_code):
             
     w2_obj = None
     for sched in all_schedules:
-        if sched["date"] >= today Image= w2_target:
+        # 🛠️ タイピングミスを修正：Image= を and sched["type"] == に変更
+        if sched["date"] >= today and sched["type"] == w2_target:
             w2_obj = sched
             visit_dates["2W"] = {"display": get_disp_str(sched)}
             break
@@ -306,7 +307,7 @@ def main_screen():
     header = data_raw[0]
     data = [dict(zip(header, row)) for row in data_raw[1:]]
     
-    # 【最強化】セッションの担当者コードをもとに、常にマスタからリアルタイムで最新ロールを引っこ抜く
+    # セッションの担当者コードをもとにマスタから同期
     tgt_code = str(st.session_state.get('user_code', '')).strip().split('.')[0]
     current_user_data = next((r for r in data if str(r.get('担当者コード')).strip().split('.')[0] == tgt_code), None)
         
@@ -470,12 +471,11 @@ if 'manual_logout' not in st.session_state: st.session_state.manual_logout = Fal
 if not st.session_state.login_status and not st.session_state.manual_logout:
     stored = get_login_storage()
     
-    # 💡【重要】JavaScriptがデータを読み取り終えるまで、この段階で確実に処理をストップさせる
+    # JavaScriptがデータを読み取り終えるまで待機
     if stored[0] is None or stored[4] is None:
         st.spinner("自動ログインを確認中...")
-        st.stop() # まだデータが届いていなければここで処理を一度止めて次の再レンダリングを待つ
+        st.stop() 
         
-    # 100%データが手元に揃った段階で初めてセッションを展開する
     if str(stored[0]) not in ["None", "null", "0", "undefined", ""]:
         st.session_state.user_name = str(stored[0]).strip()
         st.session_state.user_role = str(stored[3]).strip().split('.')[0] if stored[3] else "2"
