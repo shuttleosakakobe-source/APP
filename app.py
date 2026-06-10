@@ -19,7 +19,7 @@ st.set_page_config(
 # --- GASのウェブアプリURL ---
 GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwMUBZHk4bIrpNmopGkk2huKLdkhdzFynxqSuDxfRD_9mcIFet_osyQIg4V-CKovfQu/exec"
 
-# --- 2. スプレッドシート取得関数 ---
+# --- 2. スプレッドシート取得関数 (お知らせや次回訪問日用) ---
 @st.cache_data(ttl=0)
 def load_sheet_data(gid="0"):
     base_url = "https://docs.google.com/spreadsheets/d/1cPgQ3Ej3P7JZPaxprFQnbnDkCatQ15lEHyF9C9tMgZ4/export?format=csv&gid="
@@ -72,7 +72,6 @@ def get_visit_schedule_data(user_code):
         
     code_row = rows[0]
     user_col_idx = -1
-    
     target_code = str(user_code).strip().split('.')[0]
     
     if target_code and target_code != "none" and target_code != "":
@@ -184,6 +183,16 @@ def get_img_html(file_name, emoji, alert=False, width="100%"):
         return f'<img src="{img_code}" style="width:{width}; aspect-ratio:1/1; object-fit:contain; border-radius:15px; border:{border}; {shadow}; display: block; margin: 0 auto;">'
     return f'<div style="width:{width}; aspect-ratio:1/1; background:#f0f2f6; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:40px; border:{border}; {shadow}; margin: 0 auto;">{emoji}</div>'
 
+# --- GASへ認証・打刻要求を送る共通関数 ---
+def send_to_gas(payload):
+    data = json.dumps(payload).encode('utf-8')
+    req = urllib.request.Request(GAS_WEBAPP_URL, data=data, headers={'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req) as response:
+            return json.loads(response.read().decode('utf-8'))
+    except:
+        return None
+
 # --- ログイン維持用関数 ---
 def set_login_storage(name, url, alert, role, code):
     st_javascript(f"localStorage.setItem('shuttle_user_name', '{name}');")
@@ -234,21 +243,6 @@ def inject_pwa_blocker():
         '''
         st.components.v1.html(block_html, height=0, width=0)
 
-# --- スプレッドシートへ直接勤怠を送信する関数 ---
-def submit_attendance_direct(status):
-    user_code = st.session_state.get('user_code', '')
-    user_name = st.session_state.get('user_name', '')
-    payload = { "code": user_code, "name": user_name, "status": status }
-    data = json.dumps(payload).encode('utf-8')
-    req = urllib.request.Request(GAS_WEBAPP_URL, data=data, headers={'Content-Type': 'application/json'})
-    try:
-        with urllib.request.urlopen(req) as response:
-            res_body = json.loads(response.read().decode('utf-8'))
-            if res_body.get("status") == "success":
-                st.toast(f"🎉 {status} を記録しました！", icon="✅")
-    except:
-        st.error("通信に失敗しました。")
-
 # --- 6. メイン画面 ---
 def main_screen():
     inject_pwa_blocker() 
@@ -294,28 +288,20 @@ def main_screen():
         </style>
     """, unsafe_allow_html=True)
 
+    # ヘッダーやお知らせ用データの最低限の読み込み
     data_raw = load_sheet_data(gid="0")
-    if not data_raw:
-        st.error("データの読み込みに失敗しました。")
-        return
-        
-    header = data_raw[0]
-    data = [dict(zip(header, row)) for row in data_raw[1:]]
+    announcement = "安全運転でお願いします"
+    alert_rows = []
     
-    # 🔑 セッション内のロール情報をマスタ（G列）から常に強制再引当て（表示のズレを完全撲滅）
-    tgt_code = str(st.session_state.get('user_code', '')).strip().split('.')[0]
-    current_user_data = next((r for r in data if str(r.get('担当者コード')).strip().split('.')[0] == tgt_code), None)
+    if data_raw and len(data_raw) > 1:
+        header = data_raw[0]
+        data_rows = [dict(zip(header, row)) for row in data_raw[1:]]
+        announcement = data_rows[0].get('お知らせ', '安全運転でお願いします')
         
-    if not current_user_data and st.session_state.get('user_name'):
-        current_user_data = next((r for r in data if clean_name(r.get('担当者名')) == clean_name(st.session_state.user_name)), None)
-    
-    if current_user_data:
-        vals = list(current_user_data.values())
-        st.session_state.user_name = str(current_user_data.get('担当者名')).strip()
-        st.session_state.user_code = str(current_user_data.get('担当者コード')).strip().split('.')[0]
-        st.session_state.user_role = str(current_user_data.get('ロール','2')).strip().split('.')[0]
-        st.session_state.user_url = str(current_user_data.get('URL')).strip()
-        st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
+        for row in data_rows:
+            vals = list(row.values())
+            if len(vals) >= 6 and str(vals[5]).strip() not in ["0", "", "None"]:
+                alert_rows.append({"name": str(vals[1]), "url": str(vals[3])})
 
     st.markdown('<div class="user-label-btn">', unsafe_allow_html=True)
     if st.button(f"👤 {st.session_state.get('user_name', 'ゲスト')} さん", key="hidden_toggle"):
@@ -324,7 +310,6 @@ def main_screen():
 
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
 
-    announcement = data[0].get('お知らせ', '安全運転でお願いします')
     st.markdown(f'''
         <div style="background-color:#fffbe6; border:2px solid #ffe58f; padding:10px; border-radius:10px; display:flex; align-items:center; margin-top: 5px;">
             <span style="font-size:16px; margin-right:8px;">🔔</span>
@@ -334,7 +319,6 @@ def main_screen():
 
     # --- 「次回訪問日」＆「本日の予定」表示 ---
     visit_info, today_sched = get_visit_schedule_data(st.session_state.get('user_code', ''))
-    
     w1_disp = visit_info.get("1W", {}).get("display", "--/--")
     w2_disp = visit_info.get("2W", {}).get("display", "--/--")
     w4_disp = visit_info.get("4W", {}).get("display", "--/--")
@@ -375,14 +359,20 @@ def main_screen():
         st.write("### 🕒 勤怠・所在打刻")
         att_col1, att_col2, att_col3 = st.columns(3)
         with att_col1:
-            if st.button("🌅 出社", use_container_width=True): submit_attendance_direct("出社")
+            if st.button("🌅 出社", use_container_width=True):
+                res = send_to_gas({"code": st.session_state.user_code, "name": st.session_state.user_name, "status": "出社"})
+                if res: st.toast("🎉 出社を記録しました！", icon="✅")
         with att_col2:
-            if st.button("🚗 帰社", use_container_width=True): submit_attendance_direct("帰社")
+            if st.button("🚗 帰社", use_container_width=True):
+                res = send_to_gas({"code": st.session_state.user_code, "name": st.session_state.user_name, "status": "帰社"})
+                if res: st.toast("🎉 帰社を記録しました！", icon="✅")
         with att_col3:
-            if st.button("🌃 退社", use_container_width=True): submit_attendance_direct("退社")
+            if st.button("🌃 退社", use_container_width=True):
+                res = send_to_gas({"code": st.session_state.user_code, "name": st.session_state.user_name, "status": "退社"})
+                if res: st.toast("🎉 退社を記録しました！", icon="✅")
         st.write("---")
 
-    # 👑 管理者判定
+    # 👑 【確定認証】管理者判定（GASから直受け取りしたセッション情報を100%信頼）
     if str(st.session_state.get('user_role', '2')) == "1":
         check_sheet_rows = load_sheet_data(gid="1552856942")
         check_alert = False
@@ -390,12 +380,6 @@ def main_screen():
             target_cells = check_sheet_rows[1][:10]
             if any(cell.strip() != "" for cell in target_cells):
                 check_alert = True
-        
-        alert_rows = []
-        for row in data:
-            vals = list(row.values())
-            if len(vals) >= 6 and str(vals[5]).strip() not in ["0", "", "None"]:
-                alert_rows.append({"name": str(vals[1]), "url": str(vals[3])})
 
         st.write("") 
         col_admin1, col_admin2 = st.columns([1, 1])
@@ -462,35 +446,28 @@ def main_screen():
 if 'login_status' not in st.session_state: st.session_state.login_status = False
 if 'manual_logout' not in st.session_state: st.session_state.manual_logout = False
 
-# 🔄 自動ログイン処理（マスタ完全同期版）
+# 🔄 自動ログイン処理（GAS爆速サーバーサイド認証版）
 if not st.session_state.login_status and not st.session_state.manual_logout:
     stored = get_login_storage()
     
     if stored[0] is None or stored[4] is None:
         st.markdown('<p style="text-align:center;color:#666;">サインイン情報を確認中...</p>', unsafe_allow_html=True)
     else:
-        if str(stored[0]) not in ["None", "null", "0", "undefined", ""]:
-            # 💡【超重要修正】ブラウザの古いロール記憶を完全に無視し、ここで一度マスタを読みに行く
-            raw_data = load_sheet_data(gid="0")
-            detected_role = "2" # デフォルトは一般
+        search_code = str(stored[4]).strip().split('.')[0] if stored[4] else ""
+        if search_code not in ["None", "null", "0", "undefined", ""]:
+            # 🚀【激変箇所】マスタ検索をGASに完全丸投げし、1タップ目から完璧なデータを取得
+            res = send_to_gas({"action": "check_login", "code": search_code})
             
-            if raw_data:
-                h_row = raw_data[0]
-                r_rows = [dict(zip(h_row, r)) for r in raw_data[1:]]
-                search_code = str(stored[4]).strip().split('.')[0] if stored[4] else ""
-                
-                # 担当者コードをキーにマスタから直接ロールを取得
-                matched_user = next((r for r in r_rows if str(r.get('担当者コード')).strip().split('.')[0] == search_code), None)
-                if matched_user:
-                    detected_role = str(matched_user.get('ロール', '2')).strip().split('.')[0]
-            
-            # マスタから直接引いた正しいロールをセットしてログイン状態にする
-            st.session_state.user_name = str(stored[0]).strip()
-            st.session_state.user_code = str(stored[4]).strip().split('.')[0] if stored[4] else ""
-            st.session_state.user_role = detected_role  # 100%最新の正しいロール
-            st.session_state.login_status = True
-            st.cache_data.clear() 
-            st.rerun()            
+            if res and res.get("status") == "success":
+                st.session_state.user_name = res.get("name")
+                st.session_state.user_code = search_code
+                st.session_state.user_role = str(res.get("role")).strip() # 100%最新のロール(1 or 2)が即座に確定
+                st.session_state.user_url = res.get("url")
+                st.session_state.login_status = True
+                st.rerun()
+            else:
+                # GAS側のマスタに存在しなければストレージクリア
+                st_javascript("localStorage.clear();")
 
 # 画面描画の分岐
 if st.session_state.login_status:
@@ -501,22 +478,21 @@ else:
     u_code = st.text_input("担当者コード").strip()
     u_pass = st.text_input("パスワード", type="password").strip()
     if st.button("ログイン", type="primary", use_container_width=True):
-        st.cache_data.clear()
         raw = load_sheet_data(gid="0")
-        h = raw[0]
-        rows = [dict(zip(h, r)) for r in raw[1:]]
-        
-        user = next((r for r in rows if str(r.get('担当者コード')).strip().split('.')[0] == u_code.split('.')[0] and str(r.get('パスワード')).strip() == u_pass), None)
-        if user:
-            vals = list(user.values())
-            st.session_state.user_name = str(user.get('担当者名')).strip()
-            st.session_state.user_url = str(user.get('URL')).strip()
-            st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", ""])
-            st.session_state.user_role = str(user.get('ロール','2')).strip().split('.')[0]
-            st.session_state.user_code = str(u_code).split('.')[0]
-            st.session_state.login_status = True
-            st.session_state.manual_logout = False 
-            set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role, st.session_state.user_code)
-            st.rerun()
-        else:
-            st.error("認証失敗")
+        if raw:
+            h = raw[0]
+            rows = [dict(zip(h, r)) for r in raw[1:]]
+            user = next((r for r in rows if str(r.get('担当者コード')).strip().split('.')[0] == u_code.split('.')[0] and str(r.get('パスワード')).strip() == u_pass), None)
+            if user:
+                vals = list(user.values())
+                st.session_state.user_name = str(user.get('担当者名')).strip()
+                st.session_state.user_url = str(user.get('URL')).strip()
+                st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", ""])
+                st.session_state.user_role = str(user.get('ロール','2')).strip().split('.')[0]
+                st.session_state.user_code = str(u_code).split('.')[0]
+                st.session_state.login_status = True
+                st.session_state.manual_logout = False 
+                set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role, st.session_state.user_code)
+                st.rerun()
+            else:
+                st.error("認証失敗")
