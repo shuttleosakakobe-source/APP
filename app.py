@@ -141,7 +141,7 @@ def get_visit_schedule_data(user_code):
             
     w2_obj = None
     for sched in all_schedules:
-        if sched["date"] >= today and sched["type"] == w2_target:
+        if sched["date"] >= today Image= w2_target:
             w2_obj = sched
             visit_dates["2W"] = {"display": get_disp_str(sched)}
             break
@@ -306,11 +306,9 @@ def main_screen():
     header = data_raw[0]
     data = [dict(zip(header, row)) for row in data_raw[1:]]
     
-    # 【同期ロジック強化】名前のテキスト直接比較ではなく、セッションに入っているコード（またはクレンジング名）でマスタから再引当て
-    current_user_data = None
-    if st.session_state.get('user_code'):
-        tgt_code = str(st.session_state.user_code).strip().split('.')[0]
-        current_user_data = next((r for r in data if str(r.get('担当者コード')).strip().split('.')[0] == tgt_code), None)
+    # 【最強化】セッションの担当者コードをもとに、常にマスタからリアルタイムで最新ロールを引っこ抜く
+    tgt_code = str(st.session_state.get('user_code', '')).strip().split('.')[0]
+    current_user_data = next((r for r in data if str(r.get('担当者コード')).strip().split('.')[0] == tgt_code), None)
         
     if not current_user_data and st.session_state.get('user_name'):
         current_user_data = next((r for r in data if clean_name(r.get('担当者名')) == clean_name(st.session_state.user_name)), None)
@@ -388,7 +386,7 @@ def main_screen():
             if st.button("🌃 退社", use_container_width=True): submit_attendance_direct("退社")
         st.write("---")
 
-    # 👑 管理者判定（確実な同期の後にジャッジ）
+    # 👑 管理者判定
     if str(st.session_state.get('user_role', '2')) == "1":
         check_sheet_rows = load_sheet_data(gid="1552856942")
         check_alert = False
@@ -468,18 +466,23 @@ def main_screen():
 if 'login_status' not in st.session_state: st.session_state.login_status = False
 if 'manual_logout' not in st.session_state: st.session_state.manual_logout = False
 
-# ブラウザの保存データから復帰を試みる
+# 🔄 自動ログイン処理（タイムラグ待ち制御）
 if not st.session_state.login_status and not st.session_state.manual_logout:
     stored = get_login_storage()
-    if stored and str(stored[0]) not in ["None", "null", "0", "undefined", ""]:
-        # タイムラグ対策として、まずlocalStorage内の値を即時仮セット
+    
+    # 💡【重要】JavaScriptがデータを読み取り終えるまで、この段階で確実に処理をストップさせる
+    if stored[0] is None or stored[4] is None:
+        st.spinner("自動ログインを確認中...")
+        st.stop() # まだデータが届いていなければここで処理を一度止めて次の再レンダリングを待つ
+        
+    # 100%データが手元に揃った段階で初めてセッションを展開する
+    if str(stored[0]) not in ["None", "null", "0", "undefined", ""]:
         st.session_state.user_name = str(stored[0]).strip()
-        if stored[3] and str(stored[3]) not in ["None", "null", "undefined"]:
-            st.session_state.user_role = str(stored[3]).strip().split('.')[0]
-        if stored[4] and str(stored[4]) not in ["None", "null", "undefined"]:
-            st.session_state.user_code = str(stored[4]).strip().split('.')[0]
+        st.session_state.user_role = str(stored[3]).strip().split('.')[0] if stored[3] else "2"
+        st.session_state.user_code = str(stored[4]).strip().split('.')[0] if stored[4] else ""
         st.session_state.login_status = True
 
+# 画面描画の分岐
 if st.session_state.login_status:
     main_screen()
 else:
