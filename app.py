@@ -67,7 +67,6 @@ def get_visit_schedule_data(user_code):
     code_row = rows[0]
     user_col_idx = -1
     
-    # 判定を安定させるため文字列、トリム、ドット以降カットを徹底
     target_code = str(user_code).strip().split('.')[0]
     
     if target_code and target_code != "none" and target_code != "":
@@ -136,7 +135,8 @@ def get_visit_schedule_data(user_code):
             
     w2_obj = None
     for sched in all_schedules:
-        if sched["date"] >= today Image and sched["type"] == w2_target:
+        # 【修正箇所】「Image」という余計な文字を削除しました
+        if sched["date"] >= today and sched["type"] == w2_target:
             w2_obj = sched
             visit_dates["2W"] = {"display": get_disp_str(sched)}
             break
@@ -289,7 +289,6 @@ def main_screen():
         </style>
     """, unsafe_allow_html=True)
 
-    # 確実に最新データを引っ張るため、メイン画面に入るたびに一度だけキャッシュをまっさらに
     if "cleared_once" not in st.session_state:
         st.cache_data.clear()
         st.session_state.cleared_once = True
@@ -302,7 +301,6 @@ def main_screen():
     header = data_raw[0]
     data = [dict(zip(header, row)) for row in data_raw[1:]]
     
-    # 最新シートからログイン中ユーザーの最新情報を引き直す（コード・ロールの同期）
     current_user_data = next((r for r in data if str(r.get('担当者名')).strip() == str(st.session_state.user_name).strip()), None)
     if current_user_data:
         vals = list(current_user_data.values())
@@ -311,7 +309,6 @@ def main_screen():
         st.session_state.user_url = str(current_user_data.get('URL')).strip()
         st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
 
-    # 👤 名前ボタン（隠しスイッチ）
     st.markdown('<div class="user-label-btn">', unsafe_allow_html=True)
     if st.button(f"👤 {st.session_state.user_name} さん", key="hidden_toggle"):
         st.session_state.show_timecard = not st.session_state.get('show_timecard', False)
@@ -319,7 +316,6 @@ def main_screen():
 
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
 
-    # 🔔 お知らせ枠
     announcement = data[0].get('お知らせ', '安全運転でお願いします')
     st.markdown(f'''
         <div style="background-color:#fffbe6; border:2px solid #ffe58f; padding:10px; border-radius:10px; display:flex; align-items:center; margin-top: 5px;">
@@ -328,7 +324,7 @@ def main_screen():
         </div>
     ''', unsafe_allow_html=True)
 
-    # --- 📅 「次回訪問日」＆「本日の予定」表示 ---
+    # --- 「次回訪問日」＆「本日の予定」表示 ---
     visit_info, today_sched = get_visit_schedule_data(st.session_state.user_code)
     
     w1_disp = visit_info.get("1W", {}).get("display", "--/--")
@@ -366,7 +362,6 @@ def main_screen():
             </div>
         ''', unsafe_allow_html=True)
 
-    # 🕒 勤怠・所在打刻
     if st.session_state.get('show_timecard', False):
         st.write("")
         st.write("### 🕒 勤怠・所在打刻")
@@ -379,7 +374,6 @@ def main_screen():
             if st.button("🌃 退社", use_container_width=True): submit_attendance_direct("退社")
         st.write("---")
 
-    # 👑 【管理者エリアの修正】判定を確実に「1」の文字列で行う
     if str(st.session_state.user_role) == "1":
         check_sheet_rows = load_sheet_data(gid="1552856942")
         check_alert = False
@@ -457,12 +451,10 @@ def main_screen():
 # --- 7. 実行ロジック ---
 if 'login_status' not in st.session_state: st.session_state.login_status = False
 
-# ブラウザの保存データから復帰を試みる
 if not st.session_state.login_status:
     stored = get_login_storage()
     if stored and str(stored[0]) not in ["None", "null", "0", "undefined", ""]:
         st.session_state.user_name = str(stored[0]).strip()
-        # 型の崩れを防ぐため、ここで直接スプレッドシートの値を引き直す準備をする
         st.session_state.login_status = True
 
 if st.session_state.login_status:
@@ -478,7 +470,6 @@ else:
         h = raw[0]
         rows = [dict(zip(h, r)) for r in raw[1:]]
         
-        # ログイン時もトリムとドットカットをして安全に比較
         user = next((r for r in rows if str(r.get('担当者コード')).strip().split('.')[0] == u_code.split('.')[0] and str(r.get('パスワード')).strip() == u_pass), None)
         if user:
             vals = list(user.values())
