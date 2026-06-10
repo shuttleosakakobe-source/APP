@@ -36,6 +36,13 @@ def load_sheet_data(gid="0"):
     except:
         return None
 
+# --- 名前比較用のクレンジング関数（空白を完全に除去する） ---
+def clean_name(name_str):
+    if not name_str:
+        return ""
+    # 全角・半角スペース、タブ、改行をすべて消し去る
+    return re.sub(r'[\s\u3000]+', '', str(name_str).strip())
+
 # --- 日付解析関数 ---
 def parse_flexible_date(date_str):
     if not date_str:
@@ -300,13 +307,19 @@ def main_screen():
     header = data_raw[0]
     data = [dict(zip(header, row)) for row in data_raw[1:]]
     
-    current_user_data = next((r for r in data if str(r.get('担当者名')).strip() == str(st.session_state.user_name).strip()), None)
+    # 【最重要修正】スペースを完全に無視してユーザーデータをスプレッドシートから特定する
+    current_user_data = next((r for r in data if clean_name(r.get('担当者名')) == clean_name(st.session_state.user_name)), None)
+    
     if current_user_data:
         vals = list(current_user_data.values())
         st.session_state.user_code = str(current_user_data.get('担当者コード')).strip().split('.')[0]
         st.session_state.user_role = str(current_user_data.get('ロール','2')).strip().split('.')[0]
         st.session_state.user_url = str(current_user_data.get('URL')).strip()
         st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
+    else:
+        # 万が一マッチしなかった場合の保険として、保持しているコードをそのまま活かす
+        if 'user_role' not in st.session_state:
+            st.session_state.user_role = "2"
 
     st.markdown('<div class="user-label-btn">', unsafe_allow_html=True)
     if st.button(f"👤 {st.session_state.user_name} さん", key="hidden_toggle"):
@@ -373,6 +386,7 @@ def main_screen():
             if st.button("🌃 退社", use_container_width=True): submit_attendance_direct("退社")
         st.write("---")
 
+    # 👑 管理者判定
     if str(st.session_state.user_role) == "1":
         check_sheet_rows = load_sheet_data(gid="1552856942")
         check_alert = False
@@ -442,22 +456,24 @@ def main_screen():
     with col1:
         if os.path.exists("6.png"): st.image("6.png", width=110)
     with col2:
-        # 🚪 【ログアウト処理の大修正】
         if st.button("🚪 ログアウト", use_container_width=True):
-            st_javascript("localStorage.clear();") # ブラウザの記憶を全削除
-            st.session_state.clear()               # サーバーのセッションも全削除
-            st.session_state.manual_logout = True  # 【超重要】引き戻しブロック用フラグを立てる
+            st_javascript("localStorage.clear();") 
+            st.session_state.clear()               
+            st.session_state.manual_logout = True  
             st.rerun()
 
 # --- 7. 実行ロジック ---
 if 'login_status' not in st.session_state: st.session_state.login_status = False
 if 'manual_logout' not in st.session_state: st.session_state.manual_logout = False
 
-# ブラウザの保存データから復帰を試みる (ログアウト直後でなければ)
+# ブラウザの保存データから復帰を試みる
 if not st.session_state.login_status and not st.session_state.manual_logout:
     stored = get_login_storage()
     if stored and str(stored[0]) not in ["None", "null", "0", "undefined", ""]:
         st.session_state.user_name = str(stored[0]).strip()
+        # ブラウザにロールの記憶があれば、保険としてまずそれを適用しておく
+        if stored[3] and str(stored[3]) not in ["None", "null", "undefined"]:
+            st.session_state.user_role = str(stored[3]).strip().split('.')[0]
         st.session_state.login_status = True
 
 if st.session_state.login_status:
@@ -482,7 +498,7 @@ else:
             st.session_state.user_role = str(user.get('ロール','2')).strip().split('.')[0]
             st.session_state.user_code = str(u_code).split('.')[0]
             st.session_state.login_status = True
-            st.session_state.manual_logout = False # ログインに成功したらログアウト状態をクリア
+            st.session_state.manual_logout = False 
             set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role, st.session_state.user_code)
             st.rerun()
         else:
