@@ -294,7 +294,6 @@ def main_screen():
         </style>
     """, unsafe_allow_html=True)
 
-    # リアルタイムで最新のマスタ情報をロード
     data_raw = load_sheet_data(gid="0")
     if not data_raw:
         st.error("データの読み込みに失敗しました。")
@@ -303,7 +302,7 @@ def main_screen():
     header = data_raw[0]
     data = [dict(zip(header, row)) for row in data_raw[1:]]
     
-    # 🔑 セッションの担当者コード（または名前）をキーに、G列（ロール）をマスタから直接再引当て
+    # 🔑 セッション内のロール情報をマスタ（G列）から常に強制再引当て（表示のズレを完全撲滅）
     tgt_code = str(st.session_state.get('user_code', '')).strip().split('.')[0]
     current_user_data = next((r for r in data if str(r.get('担当者コード')).strip().split('.')[0] == tgt_code), None)
         
@@ -314,7 +313,6 @@ def main_screen():
         vals = list(current_user_data.values())
         st.session_state.user_name = str(current_user_data.get('担当者名')).strip()
         st.session_state.user_code = str(current_user_data.get('担当者コード')).strip().split('.')[0]
-        # ここでG列の「ロール」をリアルタイム上書き（1なら管理者、2なら一般）
         st.session_state.user_role = str(current_user_data.get('ロール','2')).strip().split('.')[0]
         st.session_state.user_url = str(current_user_data.get('URL')).strip()
         st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
@@ -384,7 +382,7 @@ def main_screen():
             if st.button("🌃 退社", use_container_width=True): submit_attendance_direct("退社")
         st.write("---")
 
-    # 👑 管理者判定（G列が "1" なら表示）
+    # 👑 管理者判定
     if str(st.session_state.get('user_role', '2')) == "1":
         check_sheet_rows = load_sheet_data(gid="1552856942")
         check_alert = False
@@ -464,22 +462,35 @@ def main_screen():
 if 'login_status' not in st.session_state: st.session_state.login_status = False
 if 'manual_logout' not in st.session_state: st.session_state.manual_logout = False
 
-# 🔄 自動ログイン処理
+# 🔄 自動ログイン処理（マスタ完全同期版）
 if not st.session_state.login_status and not st.session_state.manual_logout:
     stored = get_login_storage()
     
-    # JavaScriptのデータが揃うまでスピナーを表示（st.stop()は使わずに再レンダリングを促す）
     if stored[0] is None or stored[4] is None:
         st.markdown('<p style="text-align:center;color:#666;">サインイン情報を確認中...</p>', unsafe_allow_html=True)
     else:
         if str(stored[0]) not in ["None", "null", "0", "undefined", ""]:
-            # データが届いたらセッションを初期化し、確実にマスタをリロードさせる
+            # 💡【超重要修正】ブラウザの古いロール記憶を完全に無視し、ここで一度マスタを読みに行く
+            raw_data = load_sheet_data(gid="0")
+            detected_role = "2" # デフォルトは一般
+            
+            if raw_data:
+                h_row = raw_data[0]
+                r_rows = [dict(zip(h_row, r)) for r in raw_data[1:]]
+                search_code = str(stored[4]).strip().split('.')[0] if stored[4] else ""
+                
+                # 担当者コードをキーにマスタから直接ロールを取得
+                matched_user = next((r for r in r_rows if str(r.get('担当者コード')).strip().split('.')[0] == search_code), None)
+                if matched_user:
+                    detected_role = str(matched_user.get('ロール', '2')).strip().split('.')[0]
+            
+            # マスタから直接引いた正しいロールをセットしてログイン状態にする
             st.session_state.user_name = str(stored[0]).strip()
-            st.session_state.user_role = str(stored[3]).strip().split('.')[0] if stored[3] else "2"
             st.session_state.user_code = str(stored[4]).strip().split('.')[0] if stored[4] else ""
+            st.session_state.user_role = detected_role  # 100%最新の正しいロール
             st.session_state.login_status = True
-            st.cache_data.clear() # キャッシュをクリアして最新のマスタのロールを参照
-            st.rerun()            # 画面を強制リフレッシュ
+            st.cache_data.clear() 
+            st.rerun()            
 
 # 画面描画の分岐
 if st.session_state.login_status:
