@@ -16,11 +16,10 @@ st.set_page_config(
     layout="centered"
 )
 
-# --- 【直接連携】GASのウェブアプリURL ---
+# --- GASのウェブアプリURL ---
 GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwMUBZHk4bIrpNmopGkk2huKLdkhdzFynxqSuDxfRD_9mcIFet_osyQIg4V-CKovfQu/exec"
 
 # --- 2. スプレッドシート取得関数 ---
-# キャッシュを「なし(ttl=0)」にすることで、関数が呼ばれるたびに必ず最新データを読み込みます
 @st.cache_data(ttl=0)
 def load_sheet_data(gid="0"):
     base_url = "https://docs.google.com/spreadsheets/d/1cPgQ3Ej3P7JZPaxprFQnbnDkCatQ15lEHyF9C9tMgZ4/export?format=csv&gid="
@@ -37,7 +36,7 @@ def load_sheet_data(gid="0"):
     except:
         return None
 
-# --- 【日本語年月日対応版】日付解析関数 ---
+# --- 日付解析関数 ---
 def parse_flexible_date(date_str):
     if not date_str:
         return None
@@ -59,7 +58,7 @@ def parse_flexible_date(date_str):
             return None
     return None
 
-# --- 【新ロジック：数珠つなぎサイクル版】次回訪問日および本日の予定を取得する関数 ---
+# --- 次回訪問日および本日の予定を取得する関数 ---
 def get_visit_schedule_data(user_code):
     rows = load_sheet_data(gid="370581902")
     if not rows or len(rows) < 3:
@@ -67,32 +66,22 @@ def get_visit_schedule_data(user_code):
         
     code_row = rows[0]
     user_col_idx = -1
-    target_code = str(user_code).strip().lower()
     
-    for idx, col in enumerate(code_row):
-        col_str = str(col).strip().lower()
-        if col_str == target_code or col_str.split('.')[0] == target_code.split('.')[0]:
-            user_col_idx = idx
-            break
-            
-    if user_col_idx == -1:
-        try:
-            target_int = int(float(user_code))
-            for idx, col in enumerate(code_row):
-                try:
-                    if int(float(col)) == target_int:
-                        user_col_idx = idx
-                        break
-                except:
-                    continue
-        except:
-            pass
+    # 判定を安定させるため文字列、トリム、ドット以降カットを徹底
+    target_code = str(user_code).strip().split('.')[0]
+    
+    if target_code and target_code != "none" and target_code != "":
+        for idx, col in enumerate(code_row):
+            col_str = str(col).strip().split('.')[0]
+            if col_str == target_code:
+                user_col_idx = idx
+                break
 
     if user_col_idx == -1:
-        return {}, "未登録"
+        return {}, "コード未認識"
         
     today = datetime.now().date()
-    today_schedule = "なし"
+    today_schedule = "未登録"
     all_schedules = []
     
     for row in rows[2:]:
@@ -147,7 +136,7 @@ def get_visit_schedule_data(user_code):
             
     w2_obj = None
     for sched in all_schedules:
-        if sched["date"] >= today and sched["type"] == w2_target:
+        if sched["date"] >= today Image and sched["type"] == w2_target:
             w2_obj = sched
             visit_dates["2W"] = {"display": get_disp_str(sched)}
             break
@@ -179,7 +168,7 @@ def get_visit_schedule_data(user_code):
 
     return visit_dates, today_schedule
 
-# --- 3. 画像をHTML化する関数 ---
+# --- 画像をHTML化する関数 ---
 def get_img_html(file_name, emoji, alert=False, width="100%"):
     border = "5px solid red" if alert else "5px solid transparent"
     shadow = "box-shadow: 0 0 15px red; filter: drop-shadow(0 0 5px red);" if alert else ""
@@ -190,7 +179,7 @@ def get_img_html(file_name, emoji, alert=False, width="100%"):
         return f'<img src="{img_code}" style="width:{width}; aspect-ratio:1/1; object-fit:contain; border-radius:15px; border:{border}; {shadow}; display: block; margin: 0 auto;">'
     return f'<div style="width:{width}; aspect-ratio:1/1; background:#f0f2f6; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:40px; border:{border}; {shadow}; margin: 0 auto;">{emoji}</div>'
 
-# --- 4. ログイン維持用関数 ---
+# --- ログイン維持用関数 ---
 def set_login_storage(name, url, alert, role, code):
     st_javascript(f"localStorage.setItem('shuttle_user_name', '{name}');")
     st_javascript(f"localStorage.setItem('shuttle_user_url', '{url}');")
@@ -206,7 +195,7 @@ def get_login_storage():
     code = st_javascript("localStorage.getItem('shuttle_user_code');")
     return name, url, alert, role, code
 
-# --- 5. 強制アイコン＆ダウンロードブロック関数 ---
+# --- 強制アイコン＆ダウンロードブロック関数 ---
 def inject_pwa_blocker():
     if os.path.exists("icon.png"):
         with open("icon.png", "rb") as f:
@@ -240,33 +229,20 @@ def inject_pwa_blocker():
         '''
         st.components.v1.html(block_html, height=0, width=0)
 
-# --- 直接スプレッドシート（GAS）にデータをPOST送信する関数 ---
+# --- スプレッドシートへ直接勤怠を送信する関数 ---
 def submit_attendance_direct(status):
     user_code = st.session_state.get('user_code', '')
     user_name = st.session_state.get('user_name', '')
-    
-    payload = {
-        "code": user_code,
-        "name": user_name,
-        "status": status
-    }
-    
+    payload = { "code": user_code, "name": user_name, "status": status }
     data = json.dumps(payload).encode('utf-8')
-    req = urllib.request.Request(
-        GAS_WEBAPP_URL, 
-        data=data, 
-        headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
-    )
-    
+    req = urllib.request.Request(GAS_WEBAPP_URL, data=data, headers={'Content-Type': 'application/json'})
     try:
         with urllib.request.urlopen(req) as response:
             res_body = json.loads(response.read().decode('utf-8'))
             if res_body.get("status") == "success":
                 st.toast(f"🎉 {status} を記録しました！", icon="✅")
-            else:
-                st.error(f"記録失敗: {res_body.get('message')}")
-    except Exception as e:
-        st.error("スプレッドシートとの直接通信に失敗しました。")
+    except:
+        st.error("通信に失敗しました。")
 
 # --- 6. メイン画面 ---
 def main_screen():
@@ -298,72 +274,44 @@ def main_screen():
         .alert-text { color: red; font-weight: bold; font-size: 14px; margin-bottom: 8px; display: block; text-align: center; }
         .admin-box { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; text-align: center; }
         
-        /* 次回訪問日・本日の予定のデザイン */
-        .visit-container {
-            background-color: #f4f6f9;
-            border: 1px solid #dcdfe6;
-            padding: 10px;
-            border-radius: 10px;
-            margin-top: 8px;
-        }
-        .visit-title {
-            font-size: 13px;
-            font-weight: bold;
-            color: #409eff;
-            margin-bottom: 6px;
-            display: flex;
-            align-items: center;
-        }
-        .visit-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 6px;
-            text-align: center;
-            margin-bottom: 10px;
-        }
-        .visit-box {
-            background: white;
-            padding: 4px;
-            border-radius: 6px;
-            border: 1px solid #e4e7ed;
-        }
+        .visit-container { background-color: #f4f6f9; border: 1px solid #dcdfe6; padding: 10px; border-radius: 10px; margin-top: 8px; }
+        .visit-title { font-size: 13px; font-weight: bold; color: #409eff; margin-bottom: 6px; display: flex; align-items: center; }
+        .visit-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center; margin-bottom: 10px; }
+        .visit-box { background: white; padding: 4px; border-radius: 6px; border: 1px solid #e4e7ed; }
         .visit-label { font-size: 11px; color: #909399; font-weight: bold; }
         .visit-date { font-size: 13px; color: #303133; font-weight: bold; margin-top: 2px; }
         
-        .today-schedule-box {
-            background-color: #eef7fe;
-            border: 1px solid #c6e2ff;
-            border-radius: 6px;
-            padding: 6px 12px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+        .today-schedule-box { background-color: #eef7fe; border: 1px solid #c6e2ff; border-radius: 6px; padding: 6px 12px; display: flex; justify-content: space-between; align-items: center; }
         .today-title { font-size: 12px; font-weight: bold; color: #0056b3; }
         .today-val { font-size: 14px; font-weight: bold; color: #cd1212; }
         
-        div.stButton > button {
-            font-weight: bold !important;
-            border-radius: 10px !important;
-            height: 45px !important;
-        }
+        div.stButton > button { font-weight: bold !important; border-radius: 10px !important; height: 45px !important; }
         </style>
     """, unsafe_allow_html=True)
 
+    # 確実に最新データを引っ張るため、メイン画面に入るたびに一度だけキャッシュをまっさらに
+    if "cleared_once" not in st.session_state:
+        st.cache_data.clear()
+        st.session_state.cleared_once = True
+
     data_raw = load_sheet_data(gid="0")
     if not data_raw:
-        st.error("スプレッドシートの読み込みに失敗しました。時間をおいて再度お試しください。")
+        st.error("データの読み込みに失敗しました。")
         return
         
     header = data_raw[0]
     data = [dict(zip(header, row)) for row in data_raw[1:]]
     
-    current_user_data = next((r for r in data if r.get('担当者名') == st.session_state.user_name), None)
+    # 最新シートからログイン中ユーザーの最新情報を引き直す（コード・ロールの同期）
+    current_user_data = next((r for r in data if str(r.get('担当者名')).strip() == str(st.session_state.user_name).strip()), None)
     if current_user_data:
         vals = list(current_user_data.values())
+        st.session_state.user_code = str(current_user_data.get('担当者コード')).strip().split('.')[0]
+        st.session_state.user_role = str(current_user_data.get('ロール','2')).strip().split('.')[0]
+        st.session_state.user_url = str(current_user_data.get('URL')).strip()
         st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
 
-    # 👤 名前の部分をボタン化（隠しスイッチ）
+    # 👤 名前ボタン（隠しスイッチ）
     st.markdown('<div class="user-label-btn">', unsafe_allow_html=True)
     if st.button(f"👤 {st.session_state.user_name} さん", key="hidden_toggle"):
         st.session_state.show_timecard = not st.session_state.get('show_timecard', False)
@@ -381,13 +329,12 @@ def main_screen():
     ''', unsafe_allow_html=True)
 
     # --- 📅 「次回訪問日」＆「本日の予定」表示 ---
-    visit_info, today_sched = get_visit_schedule_data(st.session_state.get('user_code', ''))
+    visit_info, today_sched = get_visit_schedule_data(st.session_state.user_code)
     
     w1_disp = visit_info.get("1W", {}).get("display", "--/--")
     w2_disp = visit_info.get("2W", {}).get("display", "--/--")
     w4_disp = visit_info.get("4W", {}).get("display", "--/--")
     w8_disp = visit_info.get("8W", {}).get("display", "--/--")
-    
     today_str = datetime.now().strftime('%m/%d')
 
     hide_keywords = ["勉強会", "空き日", "休", "チーフ出勤"]
@@ -419,24 +366,21 @@ def main_screen():
             </div>
         ''', unsafe_allow_html=True)
 
-    # --- 🕒 【隠し機能】スイッチONの時だけ表示される打刻エリア ---
+    # 🕒 勤怠・所在打刻
     if st.session_state.get('show_timecard', False):
         st.write("")
         st.write("### 🕒 勤怠・所在打刻")
         att_col1, att_col2, att_col3 = st.columns(3)
         with att_col1:
-            if st.button("🌅 出社", use_container_width=True):
-                submit_attendance_direct("出社")
+            if st.button("🌅 出社", use_container_width=True): submit_attendance_direct("出社")
         with att_col2:
-            if st.button("🚗 帰社", use_container_width=True):
-                submit_attendance_direct("帰社")
+            if st.button("🚗 帰社", use_container_width=True): submit_attendance_direct("帰社")
         with att_col3:
-            if st.button("🌃 退社", use_container_width=True):
-                submit_attendance_direct("退社")
+            if st.button("🌃 退社", use_container_width=True): submit_attendance_direct("退社")
         st.write("---")
 
-    # 管理者エリア
-    if st.session_state.user_role == "1":
+    # 👑 【管理者エリアの修正】判定を確実に「1」の文字列で行う
+    if str(st.session_state.user_role) == "1":
         check_sheet_rows = load_sheet_data(gid="1552856942")
         check_alert = False
         if check_sheet_rows and len(check_sheet_rows) >= 2:
@@ -450,40 +394,39 @@ def main_screen():
             if len(vals) >= 6 and str(vals[5]).strip() not in ["0", "", "None"]:
                 alert_rows.append({"name": str(vals[1]), "url": str(vals[3])})
 
-        if check_alert or alert_rows or st.session_state.user_role == "1":
-            st.write("") 
-            col_admin1, col_admin2 = st.columns([1, 1])
+        st.write("") 
+        col_admin1, col_admin2 = st.columns([1, 1])
+        
+        with col_admin1:
+            c_btn = get_img_html("8.png", "🔍", alert=check_alert, width="90px")
+            check_url = "https://docs.google.com/spreadsheets/d/1EofzMjd3dAq8sRCdQXpxw3_-T1VDWpd-aDrvxWD4fYc/edit?gid=1552856942#gid=1552856942"
+            st.markdown(f'''
+                <div class="admin-box">
+                    <a href="{check_url}" target="_blank" style="text-decoration:none; color:black;">
+                        {c_btn}
+                        <p class="btn-text" style="margin-top: 12px;">メンテナンス<br>チェック</p>
+                    </a>
+                </div>
+            ''', unsafe_allow_html=True)
             
-            with col_admin1:
-                c_btn = get_img_html("8.png", "🔍", alert=check_alert, width="90px")
-                check_url = "https://docs.google.com/spreadsheets/d/1EofzMjd3dAq8sRCdQXpxw3_-T1VDWpd-aDrvxWD4fYc/edit?gid=1552856942#gid=1552856942"
-                st.markdown(f'''
-                    <div class="admin-box">
-                        <a href="{check_url}" target="_blank" style="text-decoration:none; color:black;">
-                            {c_btn}
-                            <p class="btn-text" style="margin-top: 12px;">メンテナンス<br>チェック</p>
-                        </a>
-                    </div>
-                ''', unsafe_allow_html=True)
-                
-            with col_admin2:
-                sponge_btn = get_img_html("5.png", "📊", alert=False, width="90px")
-                sponge_url = "https://docs.google.com/spreadsheets/d/1CUviW0AH8UdG4ZdF2CkuHh9NJKVM2NAYfXi8omQb3xE/edit?gid=0#gid=0"
-                st.markdown(f'''
-                    <div class="admin-box">
-                        <a href="{sponge_url}" target="_blank" style="text-decoration:none; color:black;">
-                            {sponge_btn}
-                            <p class="btn-text" style="margin-top: 12px;">スポンジ<br>キャンペーンチェック</p>
-                        </a>
-                    </div>
-                ''', unsafe_allow_html=True)
-            
-            if alert_rows:
-                st.write("")
-                st.markdown('<span class="alert-text">⚠️ メンテナンス未処理</span>', unsafe_allow_html=True)
-                opts = [f"{r['name']} さん" for r in alert_rows]
-                sel = st.selectbox("対象を選択", opts, label_visibility="collapsed")
-                st.link_button(f"👉 確認を開く", alert_rows[opts.index(sel)]['url'], use_container_width=True)
+        with col_admin2:
+            sponge_btn = get_img_html("5.png", "📊", alert=False, width="90px")
+            sponge_url = "https://docs.google.com/spreadsheets/d/1CUviW0AH8UdG4ZdF2CkuHh9NJKVM2NAYfXi8omQb3xE/edit?gid=0#gid=0"
+            st.markdown(f'''
+                <div class="admin-box">
+                    <a href="{sponge_url}" target="_blank" style="text-decoration:none; color:black;">
+                        {sponge_btn}
+                        <p class="btn-text" style="margin-top: 12px;">スポンジ<br>キャンペーンチェック</p>
+                    </a>
+                </div>
+            ''', unsafe_allow_html=True)
+        
+        if alert_rows:
+            st.write("")
+            st.markdown('<span class="alert-text">⚠️ メンテナンス未処理</span>', unsafe_allow_html=True)
+            opts = [f"{r['name']} さん" for r in alert_rows]
+            sel = st.selectbox("対象を選択", opts, label_visibility="collapsed")
+            st.link_button(f"👉 確認を開く", alert_rows[opts.index(sel)]['url'], use_container_width=True)
 
     # 🔘 メインボタン 4つ
     b1 = get_img_html("3.png", "📄")
@@ -508,31 +451,21 @@ def main_screen():
     with col2:
         if st.button("🚪 ログアウト", use_container_width=True):
             st_javascript("localStorage.clear();")
-            st.session_state.login_status = False
-            st.session_state.logout_requested = True
-            st.session_state.show_timecard = False
+            st.session_state.clear()
             st.rerun()
 
 # --- 7. 実行ロジック ---
 if 'login_status' not in st.session_state: st.session_state.login_status = False
-if 'logout_requested' not in st.session_state: st.session_state.logout_requested = False
 
-# 自動ログイン処理
-if not st.session_state.login_status and not st.session_state.logout_requested:
+# ブラウザの保存データから復帰を試みる
+if not st.session_state.login_status:
     stored = get_login_storage()
     if stored and str(stored[0]) not in ["None", "null", "0", "undefined", ""]:
-        st.session_state.user_name = str(stored[0])
-        st.session_state.user_url = str(stored[1])
-        st.session_state.needs_alert = (str(stored[2]) == 'True')
-        st.session_state.user_role = str(stored[3])
-        st.session_state.user_code = str(stored[4]) if len(stored) >= 5 else ""
+        st.session_state.user_name = str(stored[0]).strip()
+        # 型の崩れを防ぐため、ここで直接スプレッドシートの値を引き直す準備をする
         st.session_state.login_status = True
-        # ここでの st.rerun() 無限ループを回避するため、一回限りの読み込みにする
 
 if st.session_state.login_status:
-    # メイン画面を描画するたびに古い内部キャッシュをクリア。
-    # これにより、st.rerun()を使わずに「開いた瞬間に最新のスプレッドシートを読む」動作を実現
-    st.cache_data.clear()
     main_screen()
 else:
     inject_pwa_blocker() 
@@ -544,16 +477,18 @@ else:
         raw = load_sheet_data(gid="0")
         h = raw[0]
         rows = [dict(zip(h, r)) for r in raw[1:]]
-        user = next((r for r in rows if str(r.get('担当者コード')).strip() == u_code and str(r.get('パスワード')).strip() == u_pass), None)
+        
+        # ログイン時もトリムとドットカットをして安全に比較
+        user = next((r for r in rows if str(r.get('担当者コード')).strip().split('.')[0] == u_code.split('.')[0] and str(r.get('パスワード')).strip() == u_pass), None)
         if user:
             vals = list(user.values())
-            st.session_state.user_name = user.get('担当者名')
-            st.session_state.user_url = user.get('URL')
+            st.session_state.user_name = str(user.get('担当者名')).strip()
+            st.session_state.user_url = str(user.get('URL')).strip()
             st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", ""])
-            st.session_state.user_role = str(vals[6]).strip() if len(vals) >= 7 else "2"
-            st.session_state.user_code = u_code
+            st.session_state.user_role = str(user.get('ロール','2')).strip().split('.')[0]
+            st.session_state.user_code = str(u_code).split('.')[0]
             st.session_state.login_status = True
-            st.session_state.logout_requested = False
             set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role, st.session_state.user_code)
             st.rerun()
-        else: st.error("認証失敗")
+        else:
+            st.error("認証失敗")
