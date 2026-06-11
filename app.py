@@ -257,20 +257,30 @@ def submit_attendance_direct(status):
     except Exception as e:
         st.error("スプレッドシートとの直接通信に失敗しました。")
 
-# --- 【画像反映版】確認ダイアログ付きデイリータスクボタン ---
+# --- 【本物AMデータ完全反映版】確認ダイアログ付きデイリータスクボタン ---
 def render_daily_checklist():
     st.write("")
-    st.write("### 📅 本日の業務チェックリスト")
+    st.write("### 📅 業務チェックリスト")
     
-    # 画像データを反映したAM/PM別のタスク定義
+    # 画像（image_3c6f3d.png）から文字・手順・画面コードを完全に一致させたAMタスクリスト
     am_items = [
-        "AMデータ抽出 (各担当)",
-        "当月・前月・前々月販売管理更新",
-        "お客様要望・メンテナンスチェック",
-        "定期発注データ作成・送信 (木曜)",
-        "午前便の入庫・仕分け確認"
+        "【データ抽出】 データ抽出 (38) ※※※代行手数料27%、32%と異なる実績抽出→検索",
+        "【実績管理】 日次確認 [700→790→78] (①→F1→F9 / ②→F1→F8)",
+        "【実績管理】 日次締 [700→792] (①→入金合計のみ / ②→実績日と以降の休日分)",
+        "【実績管理】 実績送信 [700→734] (①→②表示しない → 全選択①→F1)",
+        "【発注】 クローバー返却 [F1] (出力なし)",
+        "【レンタルサービス準備】 出庫表・ピッキングリスト [300→333] (①→出庫表[翌日日付] / ②→ピッキング表[発注済最終日付])",
+        "【帳票出力】 1400→ (1.日次→Ent→Ent→1印刷 / 1.出庫表 / 1.ピッキング表[店舗合計] / 1.ピッキング表→F1)",
+        "【発注状況一覧照会】 TAN1D引当数 [400→411] (③売切商品→出庫予定日[発注済最終日付] → 商品[TAN1D]→F1→F7印刷)",
+        "【入出庫・在庫管理】 担当者別出庫 [500→511] (1.全て選択→F1 ※紙は出ない)",
+        "【棚卸調査票】 [500→582] (1：日時→2：RFDIアプリ →F1印刷)",
+        "【**メンテ終了後**】 追加発注 [400→422] (①→F1)",
+        "【**メンテ終了後**】 実績表出力 [指定店のみ] (売上納品実績→日にち[実績日]→検索・決定→検索→画面印刷) ※プレイヤーズ",
+        "【**メンテ終了後**】 納品書 [300→331] (日付[前日発送分]→F1)",
+        "【**メンテ終了後**】 帳票出力 [1400→] (1.日次→Ent→Ent→1印刷 / 1.納品書)"
     ]
     
+    # PMは追って本物のデータに差し替え可能（現状は枠のみ維持）
     pm_items = [
         "午後便の出荷処理・積込確認",
         "緊急メンテナンス・当日対応処理",
@@ -294,10 +304,10 @@ def render_daily_checklist():
         st.session_state.checklist_date = today_str
         st.session_state.checklist_completed = set()
         st.session_state.confirming_task = None
-        st.toast("☀️ 新しい日になったため、業務チェックリストを自動リセットしました！", icon="🔄")
+        st.toast("☀️ 日付が変わったため、チェックリストをリセットしました！", icon="🔄")
 
-    # AM / PM のタブ分け
-    tab_am, tab_pm = st.tabs(["🌅 AMの業務", "🌇 PMの業務"])
+    # AM / PM タブ
+    tab_am, tab_pm = st.tabs(["🌅 AM（日次更新前必・メンテ終了後）", "🌇 PMの業務"])
     
     # --- 確認ダイアログの処理エリア ---
     if st.session_state.confirming_task:
@@ -308,7 +318,7 @@ def render_daily_checklist():
             if st.button("👍 はい（完了）", key="confirm_yes", type="primary", use_container_width=True):
                 st.session_state.checklist_completed.add(task_to_confirm)
                 st.session_state.confirming_task = None
-                st.toast(f"✅ 「{task_to_confirm}」を消去しました")
+                st.toast(f"✅ タスクをクリアしました")
                 st.rerun()
         with conf_col2:
             if st.button("❌ いいえ", key="confirm_no", use_container_width=True):
@@ -318,18 +328,19 @@ def render_daily_checklist():
 
     disabled_flag = (st.session_state.confirming_task is not None)
 
-    # 🌅 AM タブの描画
+    # 🌅 AM タブ（画像の内容と完全一致）
     with tab_am:
         remaining_am = [item for item in am_items if item not in st.session_state.checklist_completed]
         if not remaining_am:
-            st.success("🎉 AMの予定業務はすべて完了しています！")
+            st.success("🎉 AMのすべての業務・更新タスクが完了しました！")
         else:
             for item in remaining_am:
+                # ボタン文字が見やすくなるよう先頭に ⬜ を付与
                 if st.button(f"⬜ {item}", key=f"btn_am_{item}", use_container_width=True, disabled=disabled_flag):
                     st.session_state.confirming_task = item
                     st.rerun()
 
-    # 🌇 PM タブの描画
+    # 🌇 PM タブ
     with tab_pm:
         remaining_pm = [item for item in pm_items if item not in st.session_state.checklist_completed]
         if not remaining_pm:
@@ -572,7 +583,7 @@ def main_screen():
         '''
         st.markdown(grid_html, unsafe_allow_html=True)
 
-    # 🌟 メンテナンス管理メニュー＆本物の消えるチェックリスト（権限「3」または特権「0」）
+    # 🌟 メンテナンス管理メニュー＆完全反映チェックリスト（権限「0」または「3」）
     if st.session_state.user_role in ["0", "3"]:
         st.write("---")
         st.write("### 🛠️ メンテナンス管理メニュー (権限3機能)")
@@ -611,7 +622,7 @@ def main_screen():
         '''
         st.markdown(grid_html_3, unsafe_allow_html=True)
         
-        # 📅 新しいAM/PMチェックリストをここに結合
+        # 📅 新しいAM完全反映版チェックリストの表示
         render_daily_checklist()
 
     st.write("---")
