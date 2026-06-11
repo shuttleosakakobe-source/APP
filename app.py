@@ -16,8 +16,8 @@ st.set_page_config(
     layout="centered"
 )
 
-# --- 【直接連携】GASウェブアプリURL ---
-GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwMUBZHk4bIrpNmopGkk2huKLdkhdzFynxqSuDxfRD_9mcIFet_osyQIg4V-CKovfQu/exec"
+# --- 【直接連携】新しいGASウェブアプリURLに更新しました ---
+GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwDvTJlbULcKSYKx-Hyp6tU-Gh4ua7j-tglY9VWx2UqyyLxTPv8EgAb5vdQpq3Auxu9/exec"
 
 # --- 2. スプレッドシート取得関数 ---
 @st.cache_data(ttl=0)
@@ -337,7 +337,7 @@ def render_daily_checklist():
         else:
             for item in remaining_am:
                 if st.button(f"⬜ {item}", key=f"btn_am_{item}", use_container_width=True):
-                    show_confirm_dialog(item) # ポップアップダイアログを呼び出し
+                    show_confirm_dialog(item)
 
     # 🌇 PM タブ
     with tab_pm:
@@ -347,7 +347,7 @@ def render_daily_checklist():
         else:
             for item in remaining_pm:
                 if st.button(f"⬜ {item}", key=f"btn_pm_{item}", use_container_width=True):
-                    show_confirm_dialog(item) # ポップアップダイアログを呼び出し
+                    show_confirm_dialog(item)
 
 # --- 6. メイン画面 ---
 def main_screen():
