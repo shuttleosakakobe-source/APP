@@ -147,7 +147,8 @@ def get_visit_schedule_data(user_code):
             
     w2_obj = None
     for sched in all_schedules:
-        if sched["date"] >= today Mud sched["type"] == w2_target:
+        # 修正箇所: Mud -> and
+        if sched["date"] >= today and sched["type"] == w2_target:
             w2_obj = sched
             visit_dates["2W"] = {"display": get_disp_str(sched)}
             break
@@ -246,7 +247,7 @@ def post_to_gas(payload):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# ⏰ 勤怠送信用の関数（復元）
+# ⏰ 勤怠送信用の関数
 def submit_attendance_direct(status):
     res = post_to_gas({
         "code": st.session_state.get('user_code', ''),
@@ -322,7 +323,7 @@ def render_daily_checklist():
         conf_col1, conf_col2 = st.columns(2)
         with conf_col1:
             if st.button("👍 はい（完了してログ記録）", key="confirm_yes", type="primary", use_container_width=True):
-                save_task_to_cloud(task_to_confirm) # クラウド側（新シート）へ書き込み
+                save_task_to_cloud(task_to_confirm) 
                 st.session_state.confirming_task = None
                 st.toast(f"✅ シートへのログ記録と全員の同期が完了しました！")
                 st.rerun()
@@ -450,7 +451,7 @@ def main_screen():
         vals = list(current_user_data.values())
         st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
 
-    # 👤 名前表示（タップでタイムカードエリアのトグルを復元）
+    # 👤 名前表示
     st.markdown('<div class="user-label-btn">', unsafe_allow_html=True)
     if st.button(f"👤 {st.session_state.user_name} さん", key="hidden_toggle"):
         if st.session_state.user_role != "0":
@@ -471,7 +472,7 @@ def main_screen():
     if st.session_state.user_role == "0":
         st.session_state.show_timecard = True
 
-    # 🕒 タイムカードエリア（復元）
+    # 🕒 タイムカードエリア
     if st.session_state.user_role != "3" and st.session_state.get('show_timecard', False):
         st.write("")
         st.write("### 🕒 勤怠・所在打刻")
