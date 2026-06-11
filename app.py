@@ -11,7 +11,7 @@ from streamlit_javascript import st_javascript
 
 # --- 1. ページ設定 ---
 st.set_page_config(
-    page_title="ダスキンシャトル北大阪 業務アプリ",
+    page_title="ダスキンシャトル 業務アプリ",
     page_icon="icon.png", 
     layout="centered"
 )
@@ -38,7 +38,7 @@ def load_sheet_data(gid="0", custom_url=None):
     except:
         return None
 
-# --- 【日本語年月日対応版】日付解析関数 ---
+# --- 日付解析関数 ---
 def parse_flexible_date(date_str):
     if not date_str:
         return None
@@ -60,7 +60,7 @@ def parse_flexible_date(date_str):
             return None
     return None
 
-# --- 【数珠つなぎサイクル版】次回訪問日および本日の予定を取得する関数 ---
+# --- 次回訪問日および本日の予定を取得する関数 ---
 def get_visit_schedule_data(user_code):
     rows = load_sheet_data(gid="370581902")
     if not rows or len(rows) < 3:
@@ -232,7 +232,7 @@ def inject_pwa_blocker():
         '''
         st.components.v1.html(block_html, height=0, width=0)
 
-# --- 直接スプレッドシート（GAS）にデータをPOST送信する関数 ---
+# --- スプレッドシート（GAS）にデータをPOST送信する関数 ---
 def submit_attendance_direct(status):
     user_code = st.session_state.get('user_code', '')
     user_name = st.session_state.get('user_name', '')
@@ -257,12 +257,12 @@ def submit_attendance_direct(status):
     except Exception as e:
         st.error("スプレッドシートとの直接通信に失敗しました。")
 
-# --- 【本物AMデータ完全反映版】確認ダイアログ付きデイリータスクボタン ---
+# --- 【AM・PM両画像 完全一致反映版】確認ダイアログ付きデイリータスクボタン ---
 def render_daily_checklist():
     st.write("")
     st.write("### 📅 業務チェックリスト")
     
-    # 画像（image_3c6f3d.png）から文字・手順・画面コードを完全に一致させたAMタスクリスト
+    # 【AM】画像（image_3c6f3d.png）から文字・手順・画面コードを完全に一致させたリスト
     am_items = [
         "【データ抽出】 データ抽出 (38) ※※※代行手数料27%、32%と異なる実績抽出→検索",
         "【実績管理】 日次確認 [700→790→78] (①→F1→F9 / ②→F1→F8)",
@@ -280,13 +280,10 @@ def render_daily_checklist():
         "【**メンテ終了後**】 帳票出力 [1400→] (1.日次→Ent→Ent→1印刷 / 1.納品書)"
     ]
     
-    # PMは追って本物のデータに差し替え可能（現状は枠のみ維持）
+    # 【PM】画像（image_3c6839.png）から文字・手順・画面コードを完全に一致させたリスト
     pm_items = [
-        "午後便の出荷処理・積込確認",
-        "緊急メンテナンス・当日対応処理",
-        "印刷用データの作成・出力確認",
-        "明日の巡回予定・荷物最終確認",
-        "販売管理の確定およびログアウト前確認"
+        "【**メンテチェック終了後**】 定期発注 [400→421] 日付（発注済翌日〜発注日） Ｆ１→定期発注実行確認→Ｆ１",
+        "【**メンテチェック終了後**】 追加発注 [400→422] ①→Ｆ１ 【あればその都度】"
     ]
     
     today_str = datetime.now().strftime("%Y-%m-%d")
@@ -307,7 +304,7 @@ def render_daily_checklist():
         st.toast("☀️ 日付が変わったため、チェックリストをリセットしました！", icon="🔄")
 
     # AM / PM タブ
-    tab_am, tab_pm = st.tabs(["🌅 AM（日次更新前必・メンテ終了後）", "🌇 PMの業務"])
+    tab_am, tab_pm = st.tabs(["🌅 AM（日次更新前必・メンテ終了後）", "🌇 PM（メンテチェック終了後）"])
     
     # --- 確認ダイアログの処理エリア ---
     if st.session_state.confirming_task:
@@ -335,16 +332,15 @@ def render_daily_checklist():
             st.success("🎉 AMのすべての業務・更新タスクが完了しました！")
         else:
             for item in remaining_am:
-                # ボタン文字が見やすくなるよう先頭に ⬜ を付与
                 if st.button(f"⬜ {item}", key=f"btn_am_{item}", use_container_width=True, disabled=disabled_flag):
                     st.session_state.confirming_task = item
                     st.rerun()
 
-    # 🌇 PM タブ
+    # 🌇 PM タブ（画像の内容と完全一致）
     with tab_pm:
         remaining_pm = [item for item in pm_items if item not in st.session_state.checklist_completed]
         if not remaining_pm:
-            st.success("🎉 PMの予定業務はすべて完了しています！お疲れ様です！")
+            st.success("🎉 PMの業務（定期発注・追加発注）がすべて完了しました！お疲れ様です！")
         else:
             for item in remaining_pm:
                 if st.button(f"⬜ {item}", key=f"btn_pm_{item}", use_container_width=True, disabled=disabled_flag):
@@ -605,7 +601,7 @@ def main_screen():
 
         btn_img1 = get_img_html("3.png", "⚙️", alert=alert1, width="85px")
         btn_img2 = get_img_html("8.png", "🔍", alert=alert2, width="85px")
-        btn_img3 = get_img_html("4.png", "🖨️", alert=alert3, width="85px")
+        btn_img3 = get_img_html("4.png", "𖖨️", alert=alert3, width="85px")
 
         grid_html_3 = f'''
             <div class="button-grid-3">
@@ -622,7 +618,7 @@ def main_screen():
         '''
         st.markdown(grid_html_3, unsafe_allow_html=True)
         
-        # 📅 新しいAM完全反映版チェックリストの表示
+        # 📅 新しいAM/PM完全反映版チェックリストの表示
         render_daily_checklist()
 
     st.write("---")
