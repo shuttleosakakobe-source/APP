@@ -16,7 +16,7 @@ st.set_page_config(
     layout="centered"
 )
 
-# --- 【直接連携】GAS的ウェブアプリURL ---
+# --- 【直接連携】GASウェブアプリURL ---
 GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwMUBZHk4bIrpNmopGkk2huKLdkhdzFynxqSuDxfRD_9mcIFet_osyQIg4V-CKovfQu/exec"
 
 # --- 2. スプレッドシート取得関数 ---
@@ -257,6 +257,89 @@ def submit_attendance_direct(status):
     except Exception as e:
         st.error("スプレッドシートとの直接通信に失敗しました。")
 
+# --- 【画像反映版】確認ダイアログ付きデイリータスクボタン ---
+def render_daily_checklist():
+    st.write("")
+    st.write("### 📅 本日の業務チェックリスト")
+    
+    # 画像データを反映したAM/PM別のタスク定義
+    am_items = [
+        "AMデータ抽出 (各担当)",
+        "当月・前月・前々月販売管理更新",
+        "お客様要望・メンテナンスチェック",
+        "定期発注データ作成・送信 (木曜)",
+        "午前便の入庫・仕分け確認"
+    ]
+    
+    pm_items = [
+        "午後便の出荷処理・積込確認",
+        "緊急メンテナンス・当日対応処理",
+        "印刷用データの作成・出力確認",
+        "明日の巡回予定・荷物最終確認",
+        "販売管理の確定およびログアウト前確認"
+    ]
+    
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    
+    # セッション状態の初期化
+    if "checklist_date" not in st.session_state:
+        st.session_state.checklist_date = today_str
+    if "checklist_completed" not in st.session_state:
+        st.session_state.checklist_completed = set()
+    if "confirming_task" not in st.session_state:
+        st.session_state.confirming_task = None
+        
+    # 日付変更リセット
+    if st.session_state.checklist_date != today_str:
+        st.session_state.checklist_date = today_str
+        st.session_state.checklist_completed = set()
+        st.session_state.confirming_task = None
+        st.toast("☀️ 新しい日になったため、業務チェックリストを自動リセットしました！", icon="🔄")
+
+    # AM / PM のタブ分け
+    tab_am, tab_pm = st.tabs(["🌅 AMの業務", "🌇 PMの業務"])
+    
+    # --- 確認ダイアログの処理エリア ---
+    if st.session_state.confirming_task:
+        task_to_confirm = st.session_state.confirming_task
+        st.warning(f"確認：「{task_to_confirm}」を完了にして消去しますか？")
+        conf_col1, conf_col2 = st.columns(2)
+        with conf_col1:
+            if st.button("👍 はい（完了）", key="confirm_yes", type="primary", use_container_width=True):
+                st.session_state.checklist_completed.add(task_to_confirm)
+                st.session_state.confirming_task = None
+                st.toast(f"✅ 「{task_to_confirm}」を消去しました")
+                st.rerun()
+        with conf_col2:
+            if st.button("❌ いいえ", key="confirm_no", use_container_width=True):
+                st.session_state.confirming_task = None
+                st.rerun()
+        st.write("---")
+
+    disabled_flag = (st.session_state.confirming_task is not None)
+
+    # 🌅 AM タブの描画
+    with tab_am:
+        remaining_am = [item for item in am_items if item not in st.session_state.checklist_completed]
+        if not remaining_am:
+            st.success("🎉 AMの予定業務はすべて完了しています！")
+        else:
+            for item in remaining_am:
+                if st.button(f"⬜ {item}", key=f"btn_am_{item}", use_container_width=True, disabled=disabled_flag):
+                    st.session_state.confirming_task = item
+                    st.rerun()
+
+    # 🌇 PM タブの描画
+    with tab_pm:
+        remaining_pm = [item for item in pm_items if item not in st.session_state.checklist_completed]
+        if not remaining_pm:
+            st.success("🎉 PMの予定業務はすべて完了しています！お疲れ様です！")
+        else:
+            for item in remaining_pm:
+                if st.button(f"⬜ {item}", key=f"btn_pm_{item}", use_container_width=True, disabled=disabled_flag):
+                    st.session_state.confirming_task = item
+                    st.rerun()
+
 # --- 6. メイン画面 ---
 def main_screen():
     inject_pwa_blocker() 
@@ -372,7 +455,7 @@ def main_screen():
     if st.session_state.user_role == "0":
         st.session_state.show_timecard = True
 
-    # 🕒 勤怠・所在打刻エリア（権限3以外、または権限0の時に常時表示）
+    # 🕒 勤怠・所在打刻エリア
     if st.session_state.user_role != "3" and st.session_state.get('show_timecard', False):
         st.write("")
         st.write("### 🕒 勤怠・所在打刻")
@@ -388,7 +471,7 @@ def main_screen():
                 submit_attendance_direct("退社")
         st.write("---")
 
-    # --- 📅 「次回訪問日」＆「本日の予定」（権限3以外に表示、0は表示） ---
+    # --- 📅 「次回訪問日」＆「本日の予定」 ---
     if st.session_state.user_role != "3":
         visit_info, today_sched = get_visit_schedule_data(st.session_state.get('user_code', ''))
         w1_disp = visit_info.get("1W", {}).get("display", "--/--")
@@ -426,7 +509,7 @@ def main_screen():
                 </div>
             ''', unsafe_allow_html=True)
 
-    # 🛠️ 管理者エリア（権限「0」または「1」に表示）
+    # 🛠️ 管理者エリア（権限「0」または「1」）
     if st.session_state.user_role in ["0", "1"]:
         check_sheet_rows = load_sheet_data(gid="1552856942")
         check_alert = False
@@ -472,7 +555,7 @@ def main_screen():
             sel = st.selectbox("対象を選択", opts, label_visibility="collapsed")
             st.link_button(f"👉 確認を開く", alert_rows[opts.index(sel)]['url'], use_container_width=True)
 
-    # 🔘 メインボタン 4つ（権限3以外、0は表示）
+    # 🔘 メインボタン 4つ（権限3以外）
     if st.session_state.user_role != "3":
         b1 = get_img_html("3.png", "📄")
         b2 = get_img_html("4.png", "📋", alert=st.session_state.needs_alert)
@@ -489,7 +572,7 @@ def main_screen():
         '''
         st.markdown(grid_html, unsafe_allow_html=True)
 
-    # 🌟 メンテナンス管理メニュー（権限「3」または特権「0」の時に表示）
+    # 🌟 メンテナンス管理メニュー＆本物の消えるチェックリスト（権限「3」または特権「0」）
     if st.session_state.user_role in ["0", "3"]:
         st.write("---")
         st.write("### 🛠️ メンテナンス管理メニュー (権限3機能)")
@@ -527,6 +610,9 @@ def main_screen():
             </div>
         '''
         st.markdown(grid_html_3, unsafe_allow_html=True)
+        
+        # 📅 新しいAM/PMチェックリストをここに結合
+        render_daily_checklist()
 
     st.write("---")
     col1, col2 = st.columns([1, 1])
