@@ -147,7 +147,7 @@ def get_visit_schedule_data(user_code):
             
     w2_obj = None
     for sched in all_schedules:
-        if sched["date"] >= today and sched["type"] == w2_target:
+        if sched["date"] >= today Mud sched["type"] == w2_target:
             w2_obj = sched
             visit_dates["2W"] = {"display": get_disp_str(sched)}
             break
@@ -232,15 +232,8 @@ def inject_pwa_blocker():
         '''
         st.components.v1.html(block_html, height=0, width=0)
 
-# --- スプレッドシート（GAS）にデータをPOST送信する関数 ---
-def submit_attendance_direct(status):
-    user_code = st.session_state.get('user_code', '')
-    user_name = st.session_state.get('user_name', '')
-    payload = {
-        "code": user_code,
-        "name": user_name,
-        "status": status
-    }
+# --- スプレッドシート（GAS）に通信する汎用関数 ---
+def post_to_gas(payload):
     data = json.dumps(payload).encode('utf-8')
     req = urllib.request.Request(
         GAS_WEBAPP_URL, 
@@ -249,20 +242,47 @@ def submit_attendance_direct(status):
     )
     try:
         with urllib.request.urlopen(req) as response:
-            res_body = json.loads(response.read().decode('utf-8'))
-            if res_body.get("status") == "success":
-                st.toast(f"🎉 {status} を記録しました！", icon="✅")
-            else:
-                st.error(f"記録失敗: {res_body.get('message')}")
+            return json.loads(response.read().decode('utf-8'))
     except Exception as e:
-        st.error("スプレッドシートとの直接通信に失敗しました。")
+        return {"status": "error", "message": str(e)}
 
-# --- 【AM・PM両画像 完全一致反映版】確認ダイアログ付きデイリータスクボタン ---
+# ⏰ 勤怠送信用の関数（復元）
+def submit_attendance_direct(status):
+    res = post_to_gas({
+        "code": st.session_state.get('user_code', ''),
+        "name": st.session_state.get('user_name', ''),
+        "status": status
+    })
+    if res.get("status") == "success":
+        st.toast(f"🎉 {status} を記録しました！", icon="✅")
+    else:
+        st.error("通信に失敗しました。")
+
+# --- 🔄 新シート(gid=1054767407)からクラウド同期型チェックリストを取得する関数 ---
+def sync_checklist_from_cloud():
+    res = post_to_gas({
+        "status": "GET_CHECKLIST",
+        "date": datetime.now().strftime("%Y-%m-%d")
+    })
+    if res.get("status") == "success" and "completed" in res:
+        return set(res["completed"])
+    return set()
+
+# --- ✍️ ボタンを押した「だれが」「いつ」を新シートに保存する関数 ---
+def save_task_to_cloud(task_name):
+    post_to_gas({
+        "status": "COMPLETE_TASK",
+        "code": st.session_state.get('user_code', ''),
+        "name": st.session_state.get('user_name', ''),
+        "task": task_name
+    })
+
+# --- 【全員連動・ロガー付き】確認ダイアログ付きデイリータスクボタン ---
 def render_daily_checklist():
     st.write("")
-    st.write("### 📅 業務チェックリスト")
+    st.write("### 📅 業務チェックリスト（新シート連動・履歴ロガー付き）")
     
-    # 【AM】画像（image_3c6f3d.png）から文字・手順・画面コードを完全に一致させたリスト
+    # AMタスク
     am_items = [
         "【データ抽出】 データ抽出 (38) ※※※代行手数料27%、32%と異なる実績抽出→検索",
         "【実績管理】 日次確認 [700→790→78] (①→F1→F9 / ②→F1→F8)",
@@ -280,28 +300,17 @@ def render_daily_checklist():
         "【**メンテ終了後**】 帳票出力 [1400→] (1.日次→Ent→Ent→1印刷 / 1.納品書)"
     ]
     
-    # 【PM】画像（image_3c6839.png）から文字・手順・画面コードを完全に一致させたリスト
+    # PMタスク
     pm_items = [
         "【**メンテチェック終了後**】 定期発注 [400→421] 日付（発注済翌日〜発注日） Ｆ１→定期発注実行確認→Ｆ１",
         "【**メンテチェック終了後**】 追加発注 [400→422] ①→Ｆ１ 【あればその都度】"
     ]
     
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    # クラウドからリアルタイムに完了データを同期
+    completed_tasks = sync_checklist_from_cloud()
     
-    # セッション状態の初期化
-    if "checklist_date" not in st.session_state:
-        st.session_state.checklist_date = today_str
-    if "checklist_completed" not in st.session_state:
-        st.session_state.checklist_completed = set()
     if "confirming_task" not in st.session_state:
         st.session_state.confirming_task = None
-        
-    # 日付変更リセット
-    if st.session_state.checklist_date != today_str:
-        st.session_state.checklist_date = today_str
-        st.session_state.checklist_completed = set()
-        st.session_state.confirming_task = None
-        st.toast("☀️ 日付が変わったため、チェックリストをリセットしました！", icon="🔄")
 
     # AM / PM タブ
     tab_am, tab_pm = st.tabs(["🌅 AM（日次更新前必・メンテ終了後）", "🌇 PM（メンテチェック終了後）"])
@@ -309,13 +318,13 @@ def render_daily_checklist():
     # --- 確認ダイアログの処理エリア ---
     if st.session_state.confirming_task:
         task_to_confirm = st.session_state.confirming_task
-        st.warning(f"確認：「{task_to_confirm}」を完了にして消去しますか？")
+        st.warning(f"確認：「{task_to_confirm}」を完了にしますか？\n操作ログが新しいスプレッドシートに送信され、他の管理メンバーの画面からも消えます。")
         conf_col1, conf_col2 = st.columns(2)
         with conf_col1:
-            if st.button("👍 はい（完了）", key="confirm_yes", type="primary", use_container_width=True):
-                st.session_state.checklist_completed.add(task_to_confirm)
+            if st.button("👍 はい（完了してログ記録）", key="confirm_yes", type="primary", use_container_width=True):
+                save_task_to_cloud(task_to_confirm) # クラウド側（新シート）へ書き込み
                 st.session_state.confirming_task = None
-                st.toast(f"✅ タスクをクリアしました")
+                st.toast(f"✅ シートへのログ記録と全員の同期が完了しました！")
                 st.rerun()
         with conf_col2:
             if st.button("❌ いいえ", key="confirm_no", use_container_width=True):
@@ -325,22 +334,22 @@ def render_daily_checklist():
 
     disabled_flag = (st.session_state.confirming_task is not None)
 
-    # 🌅 AM タブ（画像の内容と完全一致）
+    # 🌅 AM タブ
     with tab_am:
-        remaining_am = [item for item in am_items if item not in st.session_state.checklist_completed]
+        remaining_am = [item for item in am_items if item not in completed_tasks]
         if not remaining_am:
-            st.success("🎉 AMのすべての業務・更新タスクが完了しました！")
+            st.success("🎉 本日のAM業務・更新タスクはすべて完了しています！")
         else:
             for item in remaining_am:
                 if st.button(f"⬜ {item}", key=f"btn_am_{item}", use_container_width=True, disabled=disabled_flag):
                     st.session_state.confirming_task = item
                     st.rerun()
 
-    # 🌇 PM タブ（画像の内容と完全一致）
+    # 🌇 PM タブ
     with tab_pm:
-        remaining_pm = [item for item in pm_items if item not in st.session_state.checklist_completed]
+        remaining_pm = [item for item in pm_items if item not in completed_tasks]
         if not remaining_pm:
-            st.success("🎉 PMの業務（定期発注・追加発注）がすべて完了しました！お疲れ様です！")
+            st.success("🎉 本日のPM業務（定期・追加発注）はすべて完了しています！")
         else:
             for item in remaining_pm:
                 if st.button(f"⬜ {item}", key=f"btn_pm_{item}", use_container_width=True, disabled=disabled_flag):
@@ -441,7 +450,7 @@ def main_screen():
         vals = list(current_user_data.values())
         st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
 
-    # 👤 名前表示
+    # 👤 名前表示（タップでタイムカードエリアのトグルを復元）
     st.markdown('<div class="user-label-btn">', unsafe_allow_html=True)
     if st.button(f"👤 {st.session_state.user_name} さん", key="hidden_toggle"):
         if st.session_state.user_role != "0":
@@ -462,7 +471,7 @@ def main_screen():
     if st.session_state.user_role == "0":
         st.session_state.show_timecard = True
 
-    # 🕒 勤怠・所在打刻エリア
+    # 🕒 タイムカードエリア（復元）
     if st.session_state.user_role != "3" and st.session_state.get('show_timecard', False):
         st.write("")
         st.write("### 🕒 勤怠・所在打刻")
@@ -579,7 +588,7 @@ def main_screen():
         '''
         st.markdown(grid_html, unsafe_allow_html=True)
 
-    # 🌟 メンテナンス管理メニュー＆完全反映チェックリスト（権限「0」または「3」）
+    # 🌟 メンテナンス管理メニュー（権限「0」または「3」で見れる人全員にリンク）
     if st.session_state.user_role in ["0", "3"]:
         st.write("---")
         st.write("### 🛠️ メンテナンス管理メニュー (権限3機能)")
@@ -618,7 +627,7 @@ def main_screen():
         '''
         st.markdown(grid_html_3, unsafe_allow_html=True)
         
-        # 📅 新しいAM/PM完全反映版チェックリストの表示
+        # 📅 新シート（gid=1054767407）連動版チェックリストを表示
         render_daily_checklist()
 
     st.write("---")
