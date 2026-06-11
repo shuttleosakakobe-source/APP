@@ -16,7 +16,7 @@ st.set_page_config(
     layout="centered"
 )
 
-# --- 【直接連携】GASのウェブアプリURL ---
+# --- 【直接連携】GAS的ウェブアプリURL ---
 GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwMUBZHk4bIrpNmopGkk2huKLdkhdzFynxqSuDxfRD_9mcIFet_osyQIg4V-CKovfQu/exec"
 
 # --- 2. スプレッドシート取得関数 ---
@@ -372,7 +372,7 @@ def main_screen():
     if st.session_state.user_role == "0":
         st.session_state.show_timecard = True
 
-    # 🕒 勤怠・所在打刻エリア（権限3以外）
+    # 🕒 勤怠・所在打刻エリア（権限3以外、または権限0の時に常時表示）
     if st.session_state.user_role != "3" and st.session_state.get('show_timecard', False):
         st.write("")
         st.write("### 🕒 勤怠・所在打刻")
@@ -388,7 +388,7 @@ def main_screen():
                 submit_attendance_direct("退社")
         st.write("---")
 
-    # --- 📅 「次回訪問日」＆「本日の予定」（権限3以外） ---
+    # --- 📅 「次回訪問日」＆「本日の予定」（権限3以外に表示、0は表示） ---
     if st.session_state.user_role != "3":
         visit_info, today_sched = get_visit_schedule_data(st.session_state.get('user_code', ''))
         w1_disp = visit_info.get("1W", {}).get("display", "--/--")
@@ -426,7 +426,7 @@ def main_screen():
                 </div>
             ''', unsafe_allow_html=True)
 
-    # 🛠️ 管理者エリア（権限「0」または「1」）
+    # 🛠️ 管理者エリア（権限「0」または「1」に表示）
     if st.session_state.user_role in ["0", "1"]:
         check_sheet_rows = load_sheet_data(gid="1552856942")
         check_alert = False
@@ -472,7 +472,7 @@ def main_screen():
             sel = st.selectbox("対象を選択", opts, label_visibility="collapsed")
             st.link_button(f"👉 確認を開く", alert_rows[opts.index(sel)]['url'], use_container_width=True)
 
-    # 🔘 メインボタン 4つ（権限3以外）
+    # 🔘 メインボタン 4つ（権限3以外、0は表示）
     if st.session_state.user_role != "3":
         b1 = get_img_html("3.png", "📄")
         b2 = get_img_html("4.png", "📋", alert=st.session_state.needs_alert)
@@ -489,13 +489,11 @@ def main_screen():
         '''
         st.markdown(grid_html, unsafe_allow_html=True)
 
-    # 🌟 【新仕様】権限「3」専用 新機能エリア
-    if st.session_state.user_role == "3":
-        st.write("")
-        st.write("### 🛠️ メンテナンス管理メニュー")
+    # 🌟 メンテナンス管理メニュー（権限「3」または特権「0」の時に表示）
+    if st.session_state.user_role in ["0", "3"]:
+        st.write("---")
+        st.write("### 🛠️ メンテナンス管理メニュー (権限3機能)")
 
-        # 各専用シートからデータを取得して、1行目が空白でないか判定（アラート判定）
-        # CSVエクスポート用のURLに変換して取得
         url_sheet1 = "https://docs.google.com/spreadsheets/d/16JhXHMdYPoOIQmPBgd2sVclYkdYip6arRHtr86hr9hg/export?format=csv&gid=1365103622"
         url_sheet2 = "https://docs.google.com/spreadsheets/d/1DShHig4iOhNXOkxMfALTRhyH0P5dtVpdBkNXvVQPC3g/export?format=csv&gid=1365103622"
         url_sheet3 = "https://docs.google.com/spreadsheets/d/1kk9vFlE6LiBDMp6B4phUtnGs8CZfV8uhgkS-atdbBG0/export?format=csv&gid=1365103622"
@@ -504,22 +502,17 @@ def main_screen():
         rows2 = load_sheet_data(custom_url=url_sheet2)
         rows3 = load_sheet_data(custom_url=url_sheet3)
 
-        # 1行目（データが始まる行。通常インデックス1。なければインデックス0）が空でないか確認する判定
-        # 行自体が存在し、かつその行のいずれかのセルに文字が入っていれば「空ではない（True）」とみなす
         alert1 = rows1 and len(rows1) >= 2 and any(cell.strip() != "" for cell in rows1[1][:15])
         alert2 = rows2 and len(rows2) >= 2 and any(cell.strip() != "" for cell in rows2[1][:15])
         alert3 = rows3 and len(rows3) >= 2 and any(cell.strip() != "" for cell in rows3[1][:15])
 
-        # いずれかにアラートがある場合の警告表示
         if alert1 or alert2 or alert3:
-            st.markdown('<span class="alert-text">⚠️ 未処理のデータがあります</span>', unsafe_allow_html=True)
+            st.markdown('<span class="alert-text">⚠️ 管理メニューに未処理のデータがあります</span>', unsafe_allow_html=True)
 
-        # ボタン用のアイコンHTML生成
         btn_img1 = get_img_html("3.png", "⚙️", alert=alert1, width="85px")
         btn_img2 = get_img_html("8.png", "🔍", alert=alert2, width="85px")
         btn_img3 = get_img_html("4.png", "🖨️", alert=alert3, width="85px")
 
-        # 3カラムグリッドの配置
         grid_html_3 = f'''
             <div class="button-grid-3">
                 <a class="btn-item" href="https://docs.google.com/spreadsheets/d/16JhXHMdYPoOIQmPBgd2sVclYkdYip6arRHtr86hr9hg/edit?gid=1365103622#gid=1365103622" target="_blank">
