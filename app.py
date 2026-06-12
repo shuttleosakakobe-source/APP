@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 # --- ⚠️ 最新のGASウェブアプリURLに差し替えてください ---
-GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbx8XhYWjgYwhGR03AdasSQQl4WP_lyTXS71v6PDKopx3kh_Bkst3yEKIG3LtgI4Nefi/exec"
+GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwyYGbBuZKK_xXiA3wl7fpi1WhPT0RjlAaw5qHOFWsf8t83zEa23qWWbFdZnNaUDt_y/exec"
 
 # --- 2. スプレッドシート取得関数 ---
 @st.cache_data(ttl=0)
@@ -267,17 +267,7 @@ def sync_checklist_from_cloud():
         return set(res["completed"])
     return set()
 
-# --- ✍️ 業務チェックリスト専用の保存関数 ---
-def save_task_to_cloud(task_name):
-    # 🔴絶対にタイムカードに誤流出させないよう、目印(status)をガチガチに固定
-    return post_to_gas({
-        "status": "COMPLETE_TASK",
-        "code": st.session_state.get('user_code', ''),
-        "name": st.session_state.get('user_name', ''),
-        "task": task_name
-    })
-
-# --- ⚡ 確認ダイアログ ---
+# --- ⚡ 確認ダイアログ（業務チェックリスト用） ---
 @st.dialog("⚠️ 業務完了の確認")
 def confirm_task_dialog(task_name):
     st.write(f"**「{task_name}」** を完了にしますか？")
@@ -287,9 +277,14 @@ def confirm_task_dialog(task_name):
     col1, col2 = st.columns(2)
     with col1:
         if st.button("👍 はい（完了）", key="dlg_yes", type="primary", use_container_width=True):
-            # 🔴タイムカード側のバグ発火を完全に防ぐため、このスコープ（ダイアログ内）で即時通信を完結させる
             with st.spinner("スプレッドシートに反映中..."):
-                res = save_task_to_cloud(task_name)
+                # 🔴GASの構造に合わせ、statusをCOMPLETE_TASKにして送信
+                res = post_to_gas({
+                    "status": "COMPLETE_TASK",
+                    "code": st.session_state.get('user_code', ''),
+                    "name": st.session_state.get('user_name', ''),
+                    "task": task_name
+                })
                 if res.get("status") == "success":
                     st.toast(f"✅ 「{task_name}」を記録しました！", icon="🎉")
                 else:
@@ -462,13 +457,12 @@ def main_screen():
     if st.session_state.user_role == "0":
         st.session_state.show_timecard = True
 
-    # 🕒 タイムカードエリア（🔴誤爆防止のため、完全にif文を独立）
+    # 🕒 タイムカードエリア
     if st.session_state.user_role != "3" and st.session_state.get('show_timecard', False):
         st.write("")
         st.write("### 🕒 勤怠・所在打刻")
         att_col1, att_col2, att_col3 = st.columns(3)
         
-        # 変数初期化で誤送信をガード
         status_click = None
         with att_col1:
             if st.button("🌅 出社", key="time_in_btn", use_container_width=True): status_click = "出社"
@@ -479,8 +473,9 @@ def main_screen():
             
         if status_click:
             with st.spinner("タイムカード記録中..."):
+                # 🔴タイムカード打刻であることをGASに100%識別させる送信内容
                 res = post_to_gas({
-                    "status": "TIMECARD",  # 明確に区別
+                    "status": "TIMECARD",
                     "code": st.session_state.get('user_code', ''),
                     "name": st.session_state.get('user_name', ''),
                     "timecard_status": status_click
