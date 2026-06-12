@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 # --- 【直接連携】最新のGASウェブアプリURLに更新完了 ---
-GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwtqHHh0I0_thU-W8-HBcIRtGUi06vSd-DHAi7wgGYAHp3MK1ilGKvvzN26cUX1wwXv/exec"
+GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbx8XhYWjgYwhGR03AdasSQQl4WP_lyTXS71v6PDKopx3kh_Bkst3yEKIG3LtgI4Nefi/exec"
 
 # --- 2. スプレッドシート取得関数 ---
 @st.cache_data(ttl=0)
@@ -282,7 +282,7 @@ def sync_checklist_from_cloud():
 # --- ✍️ ボタンを押した「だれが」「いつ」を新シートに保存する関数 ---
 def save_task_to_cloud(task_name):
     return post_to_gas({
-        "status": "COMPLETE_TASK",
+        "status": "COMPLETE_TASK",  # 👈 これを確実に追記します
         "code": st.session_state.get('user_code', ''),
         "name": st.session_state.get('user_name', ''),
         "task": task_name
