@@ -16,9 +16,6 @@ st.set_page_config(
     layout="centered"
 )
 
-# --- 🔄 自動更新（ミリ秒指定: 10000ms = 10秒ごとに画面を最新に同期） ---
-st.fragment(run_every=10)
-
 # --- ⚠️ 最新のGASウェブアプリURLに差し替えてください ---
 GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwHh3IFsieR8xL5PTTjS6id2slofK-cAVRPOwo0UljCATHHvYjBiXG_YJaNewAcyF-F/exec"
 
@@ -260,16 +257,6 @@ def post_to_gas(payload):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# --- 🔄 クラウド同期型チェックリストを取得する関数 ---
-def sync_checklist_from_cloud():
-    res = post_to_gas({
-        "status": "GET_CHECKLIST",
-        "date": datetime.now().strftime("%Y-%m-%d")
-    })
-    if res.get("status") == "success" and "completed" in res:
-        return set(res["completed"])
-    return set()
-
 # --- ⚡ 確認ダイアログ（業務チェックリスト用） ---
 @st.dialog("⚠️ 業務完了の確認")
 def confirm_task_dialog(task_name):
@@ -296,10 +283,11 @@ def confirm_task_dialog(task_name):
         if st.button("❌ キャンセル", key="dlg_no", use_container_width=True):
             st.rerun()
 
-# --- 【全員連動】デイリータスクボタン ---
+# --- 🔄 【全員連動・10秒自動同期】チェックリスト専用コンポーネント ---
+@st.fragment(run_every=10)
 def render_daily_checklist():
     st.write("")
-    st.write("### 📅 業務チェックリスト（新シート連動・履歴ロガー付き）")
+    st.write("### 📅 業務チェックリスト（自動同期・10秒更新）")
     
     am_items = [
         "【データ抽出】 データ抽出 (38) ※※※代行手数料27%、32%と異なる実績抽出→検索",
@@ -323,7 +311,13 @@ def render_daily_checklist():
         "【**メンテチェック終了後**】 追加発注 [400→422] ①→Ｆ１ 【あればその都度】"
     ]
     
-    completed_tasks = sync_checklist_from_cloud()
+    # 💥 キャッシュを無視して、最新の完了済みリストを毎回強制取得
+    res = post_to_gas({
+        "status": "GET_CHECKLIST",
+        "date": datetime.now().strftime("%Y-%m-%d")
+    })
+    completed_tasks = set(res.get("completed", [])) if res.get("status") == "success" else set()
+    
     tab_am, tab_pm = st.tabs(["🌅 AM（日次更新前必・メンテ終了後）", "🌇 PM（メンテチェック終了後）"])
 
     with tab_am:
