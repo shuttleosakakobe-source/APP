@@ -288,6 +288,23 @@ def save_task_to_cloud(task_name):
         "task": task_name
     })
 
+# --- ⚡ 高速ポップアップ（ダイアログ）用関数 ---
+@st.dialog("⚠️ 業務完了の確認")
+def confirm_task_dialog(task_name):
+    st.write(f"**「{task_name}」** を完了にしますか？")
+    st.caption("操作ログが新しいスプレッドシートに送信され、他の管理メンバーの画面からもリアルタイムに消えます。")
+    st.write("")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("👍 はい（完了）", key="dlg_yes", type="primary", use_container_width=True):
+            save_task_to_cloud(task_name)
+            st.toast("✅ シートへ記録し同期しました！")
+            st.rerun()
+    with col2:
+        if st.button("❌ キャンセル", key="dlg_no", use_container_width=True):
+            st.rerun()
+
 # --- 【全員連動・ロガー付き】確認ダイアログ付きデイリータスクボタン ---
 def render_daily_checklist():
     st.write("")
@@ -320,30 +337,8 @@ def render_daily_checklist():
     # クラウドからリアルタイムに完了データを同期
     completed_tasks = sync_checklist_from_cloud()
     
-    if "confirming_task" not in st.session_state:
-        st.session_state.confirming_task = None
-
     # AM / PM タブ
     tab_am, tab_pm = st.tabs(["🌅 AM（日次更新前必・メンテ終了後）", "🌇 PM（メンテチェック終了後）"])
-    
-    # --- 確認ダイアログの処理エリア ---
-    if st.session_state.confirming_task:
-        task_to_confirm = st.session_state.confirming_task
-        st.warning(f"確認：「{task_to_confirm}」を完了にしますか？\n操作ログが新しいスプレッドシートに送信され、他の管理メンバーの画面からも消えます。")
-        conf_col1, conf_col2 = st.columns(2)
-        with conf_col1:
-            if st.button("👍 はい（完了してログ記録）", key="confirm_yes", type="primary", use_container_width=True):
-                save_task_to_cloud(task_to_confirm) # クラウド側（新シート）へ書き込み
-                st.session_state.confirming_task = None
-                st.toast(f"✅ シートへのログ記録と全員の同期が完了しました！")
-                st.rerun()
-        with conf_col2:
-            if st.button("❌ いいえ", key="confirm_no", use_container_width=True):
-                st.session_state.confirming_task = None
-                st.rerun()
-        st.write("---")
-
-    disabled_flag = (st.session_state.confirming_task is not None)
 
     # 🌅 AM タブ
     with tab_am:
@@ -352,9 +347,8 @@ def render_daily_checklist():
             st.success("🎉 本日のAM業務・更新タスクはすべて完了しています！")
         else:
             for item in remaining_am:
-                if st.button(f"⬜ {item}", key=f"btn_am_{item}", use_container_width=True, disabled=disabled_flag):
-                    st.session_state.confirming_task = item
-                    st.rerun()
+                if st.button(f"⬜ {item}", key=f"btn_am_{item}", use_container_width=True):
+                    confirm_task_dialog(item)  # ポップアップを最速で起動
 
     # 🌇 PM タブ
     with tab_pm:
@@ -363,9 +357,8 @@ def render_daily_checklist():
             st.success("🎉 本日のPM業務（定期・追加発注）はすべて完了しています！")
         else:
             for item in remaining_pm:
-                if st.button(f"⬜ {item}", key=f"btn_pm_{item}", use_container_width=True, disabled=disabled_flag):
-                    st.session_state.confirming_task = item
-                    st.rerun()
+                if st.button(f"⬜ {item}", key=f"btn_pm_{item}", use_container_width=True):
+                    confirm_task_dialog(item)  # ポップアップを最速で起動
 
 # --- 6. メイン画面 ---
 def main_screen():
@@ -491,7 +484,7 @@ def main_screen():
             if st.button("🌅 出社", use_container_width=True):
                 submit_attendance_direct("出社")
         with att_col2:
-            if st.button("🚗 帰社", use_container_width=True):
+            if st.button("🌅 帰社", use_container_width=True):
                 submit_attendance_direct("帰社")
         with att_col3:
             if st.button("🌃 退社", use_container_width=True):
@@ -638,7 +631,7 @@ def main_screen():
         '''
         st.markdown(grid_html_3, unsafe_allow_html=True)
         
-        # 📅 新シート（gid=1054767407）連動版チェックリストを表示
+        # 📅 新シート連動版チェックリストを表示
         render_daily_checklist()
 
     # --- 🚪 一番下に配置されたログアウトボタン ---
