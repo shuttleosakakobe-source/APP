@@ -346,7 +346,47 @@ def render_daily_checklist():
                 if st.button(f"⬜ {item}", key=f"btn_pm_{item}", use_container_width=True):
                     show_confirm_dialog(item)
 
-# --- 6. メイン画面 ---
+# --- 6. ユーザー選択（ログイン）画面 ---
+def login_screen():
+    inject_pwa_blocker()
+    st.title("🔑 ユーザー選択")
+    st.write("利用する担当者名を選択してください。")
+    
+    # スプレッドシートのメイン（gid=0）からユーザー一覧を取得
+    data_raw = load_sheet_data(gid="0")
+    if not data_raw or len(data_raw) < 2:
+        st.error("ユーザーデータの読み込みに失敗しました。")
+        return
+        
+    header = data_raw[0]
+    user_list = []
+    for row in data_raw[1:]:
+        if len(row) > 1 and row[1].strip():
+            user_list.append(row[1].strip())
+            
+    selected_name = st.selectbox("担当者名", user_list)
+    
+    if st.button("ログイン", type="primary", use_container_width=True):
+        # 選択されたユーザーの詳細情報を取得してセッションに保存
+        for row in data_raw[1:]:
+            if len(row) > 1 and row[1].strip() == selected_name:
+                user_dict = dict(zip(header, row))
+                st.session_state.user_name = selected_name
+                st.session_state.user_code = str(user_dict.get('コード', '')).split('.')[0]
+                st.session_state.user_role = str(user_dict.get('権限', '3')).split('.')[0]
+                st.session_state.show_timecard = False
+                
+                # ブラウザ保存
+                set_login_storage(
+                    st.session_state.user_name,
+                    user_dict.get('個別URL', ''),
+                    str(user_dict.get('要確認フラグ', '0')),
+                    st.session_state.user_role,
+                    st.session_state.user_code
+                )
+                st.rerun()
+
+# --- 7. メイン画面 ---
 def main_screen():
     inject_pwa_blocker() 
 
@@ -555,8 +595,22 @@ def main_screen():
 
 # --- アプリの起動 ---
 if __name__ == "__main__":
-    # 未ログイン（セッションが空）の場合のエラーを防ぐための初期値設定
+    # 1. ローカルストレージ（自動ログイン）のチェックを試みる
+    local_name = st_javascript("localStorage.getItem('shuttle_user_name');")
+    local_role = st_javascript("localStorage.getItem('shuttle_user_role');")
+    local_code = st_javascript("localStorage.getItem('shuttle_user_code');")
+    
     if 'user_name' not in st.session_state:
-        st.warning("👤 ログイン、またはユーザー選択を行ってください。")
+        if local_name and local_role:
+            # 端末の過去のログイン情報を引き継ぐ
+            st.session_state.user_name = str(local_name)
+            st.session_state.user_role = str(local_role)
+            st.session_state.user_code = str(local_code) if local_code else ""
+            st.session_state.show_timecard = False
+            main_screen()
+        else:
+            # ログイン情報がない場合はユーザー選択（ログイン画面）を表示
+            login_screen()
     else:
+        # すでにログインセッションがある場合はメイン画面を表示
         main_screen()
