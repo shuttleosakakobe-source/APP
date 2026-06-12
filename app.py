@@ -147,7 +147,7 @@ def get_visit_schedule_data(user_code):
             
     w2_obj = None
     for sched in all_schedules:
-        if sched["date"] >= today Mud sched["type"] == w2_target:
+        if sched["date"] >= today and sched["type"] == w2_target:
             w2_obj = sched
             visit_dates["2W"] = {"display": get_disp_str(sched)}
             break
@@ -198,6 +198,17 @@ def set_login_storage(name, url, alert, role, code):
     st_javascript(f"localStorage.setItem('shuttle_user_role', '{role}');")
     st_javascript(f"localStorage.setItem('shuttle_user_code', '{code}');")
 
+# --- 🔄 ログアウト処理関数 ---
+def process_logout():
+    st_javascript("localStorage.clear();")
+    st.session_state.login_status = False
+    st.session_state.logout_requested = True
+    st.session_state.show_timecard = False
+    if 'user_name' in st.session_state: del st.session_state.user_name
+    if 'user_code' in st.session_state: del st.session_state.user_code
+    if 'user_role' in st.session_state: del st.session_state.user_role
+    st.rerun()
+
 # --- 5. 強制アイコン＆ダウンロードブロック関数 ---
 def inject_pwa_blocker():
     if os.path.exists("icon.png"):
@@ -246,7 +257,7 @@ def post_to_gas(payload):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# ⏰ 勤怠送信用の関数（復元）
+# ⏰ 勤怠送信用の関数
 def submit_attendance_direct(status):
     res = post_to_gas({
         "code": st.session_state.get('user_code', ''),
@@ -450,12 +461,22 @@ def main_screen():
         vals = list(current_user_data.values())
         st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
 
-    # 👤 名前表示（タップでタイムカードエリアのトグルを復元）
+    # 👤 名前表示（タップでメニュー・打刻表示のトグル）
     st.markdown('<div class="user-label-btn">', unsafe_allow_html=True)
     if st.button(f"👤 {st.session_state.user_name} さん", key="hidden_toggle"):
-        if st.session_state.user_role != "0":
+        # 3以外（0,1,2）なら打刻のトグルを行う
+        if st.session_state.user_role != "0" and st.session_state.user_role != "3":
             st.session_state.show_timecard = not st.session_state.get('show_timecard', False)
+        # ログアウトを表示させるためのトグル
+        st.session_state.show_logout_menu = not st.session_state.get('show_logout_menu', False)
     st.markdown('</div>', unsafe_allow_html=True)
+
+    # 👤ボタンをタップした時に出現するログアウトエリア
+    if st.session_state.get('show_logout_menu', False):
+        m_col1, m_col2 = st.columns([2, 1])
+        with m_col2:
+            if st.button("🚪 ログアウト", key="header_logout_btn", type="secondary", use_container_width=True):
+                process_logout()
 
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
 
@@ -471,7 +492,7 @@ def main_screen():
     if st.session_state.user_role == "0":
         st.session_state.show_timecard = True
 
-    # 🕒 タイムカードエリア（復元）
+    # 🕒 タイムカードエリア
     if st.session_state.user_role != "3" and st.session_state.get('show_timecard', False):
         st.write("")
         st.write("### 🕒 勤怠・所在打刻")
@@ -631,20 +652,25 @@ def main_screen():
         render_daily_checklist()
 
     st.write("---")
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if os.path.exists("6.png"): st.image("6.png", width=110)
-    with col2:
-        if st.button("🚪 ログアウト", use_container_width=True):
-            st_javascript("localStorage.clear();")
-            st.session_state.login_status = False
-            st.session_state.logout_requested = True
-            st.session_state.show_timecard = False
-            st.rerun()
+    if os.path.exists("6.png"): st.image("6.png", width=110)
 
 # --- 7. 実行ロジック ---
 if 'login_status' not in st.session_state: st.session_state.login_status = False
 if 'logout_requested' not in st.session_state: st.session_state.logout_requested = False
+
+# ローカルストレージ自動ログイン判定用
+if not st.session_state.login_status and not st.session_state.logout_requested:
+    local_name = st_javascript("localStorage.getItem('shuttle_user_name');")
+    local_role = st_javascript("localStorage.getItem('shuttle_user_role');")
+    local_code = st_javascript("localStorage.getItem('shuttle_user_code');")
+    local_url = st_javascript("localStorage.getItem('shuttle_user_url');")
+    
+    if local_name and local_role and local_code:
+        st.session_state.user_name = str(local_name)
+        st.session_state.user_role = str(local_role)
+        st.session_state.user_code = str(local_code)
+        st.session_state.user_url = str(local_url) if local_url else ""
+        st.session_state.login_status = True
 
 if st.session_state.login_status:
     main_screen()
