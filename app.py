@@ -198,6 +198,18 @@ def set_login_storage(name, url, alert, role, code):
     st_javascript(f"localStorage.setItem('shuttle_user_role', '{role}');")
     st_javascript(f"localStorage.setItem('shuttle_user_code', '{code}');")
 
+# --- 🔄 ログアウト処理関数 ---
+def clear_login_storage():
+    st_javascript("localStorage.removeItem('shuttle_user_name');")
+    st_javascript("localStorage.removeItem('shuttle_user_url');")
+    st_javascript("localStorage.removeItem('shuttle_needs_alert');")
+    st_javascript("localStorage.removeItem('shuttle_user_role');")
+    st_javascript("localStorage.removeItem('shuttle_user_code');")
+    if 'user_name' in st.session_state: del st.session_state.user_name
+    if 'user_code' in st.session_state: del st.session_state.user_code
+    if 'user_role' in st.session_state: del st.session_state.user_role
+    st.rerun()
+
 # --- 5. 強制アイコン＆ダウンロードブロック関数 ---
 def inject_pwa_blocker():
     if os.path.exists("icon.png"):
@@ -375,6 +387,7 @@ def login_screen():
                 st.session_state.user_code = str(user_dict.get('コード', '')).split('.')[0]
                 st.session_state.user_role = str(user_dict.get('権限', '3')).split('.')[0]
                 st.session_state.show_timecard = False
+                st.session_state.show_menu = False
                 
                 # ブラウザ保存
                 set_login_storage(
@@ -480,11 +493,20 @@ def main_screen():
         vals = list(current_user_data.values())
         st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
 
+    # 右上：名前表示ボタン
     st.markdown('<div class="user-label-btn">', unsafe_allow_html=True)
-    if st.button(f"👤 {st.session_state.user_name} さん", key="hidden_toggle"):
+    if st.button(f"👤 {st.session_state.user_name} さん", key="menu_toggle"):
+        st.session_state.show_menu = not st.session_state.get('show_menu', False)
         if st.session_state.user_role != "0":
-            st.session_state.show_timecard = not st.session_state.get('show_timecard', False)
+            st.session_state.show_timecard = st.session_state.show_menu
     st.markdown('</div>', unsafe_allow_html=True)
+
+    # 名前のクリック時に開く拡張メニュー（ログアウトなど）
+    if st.session_state.get('show_menu', False):
+        m_col1, m_col2 = st.columns([2, 1])
+        with m_col2:
+            if st.button("🚪 ログアウト", type="secondary", use_container_width=True):
+                clear_login_storage()
 
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
 
@@ -607,6 +629,7 @@ if __name__ == "__main__":
             st.session_state.user_role = str(local_role)
             st.session_state.user_code = str(local_code) if local_code else ""
             st.session_state.show_timecard = False
+            st.session_state.show_menu = False
             main_screen()
         else:
             # ログイン情報がない場合はユーザー選択（ログイン画面）を表示
