@@ -341,7 +341,7 @@ def render_daily_checklist():
 def main_screen():
     inject_pwa_blocker() 
 
-    # 🎨 CSSスタイルの大幅アップデート（完全に左詰め＆自動折り返し対応）
+    # 🎨 CSSスタイルの完全決定版（ボタンのインナーFlexbox階層まで徹底的に左揃え＆100%幅を強制）
     st.markdown("""
         <style>
         header {visibility: hidden; height: 0px !important;}
@@ -415,28 +415,40 @@ def main_screen():
         .today-title { font-size: 12px; font-weight: bold; color: #0056b3; }
         .today-val { font-size: 14px; font-weight: bold; color: #cd1212; }
         
-        /* 🎯 【最重要】Streamlit標準ボタンのインナースタイルを強制的に「左詰め・折り返し」に書き換え */
+        # --- 📌 【超重要】チェックリスト用のボタンを完全に100%幅の「完全左詰め・左揃え」に強制上書き ---
         div.stButton > button {
-            font-weight: bold !important;
-            border-radius: 10px !important;
+            width: 100% !important;
             height: auto !important;
-            min-height: 45px !important;
-            padding: 8px 12px !important;
-            text-align: left !important;
+            min-height: 48px !important;
+            padding: 10px 16px !important;
+            border-radius: 10px !important;
+            font-weight: bold !important;
+            
+            /* Streamlitがデフォルトで持っている中央寄せFlexBox構造を、強制的に左端寄せに変更 */
             display: flex !important;
             align-items: center !important;
-            justify-content: flex-start !important;
+            justify-content: flex-start !important; 
+            text-align: left !important;
         }
         
-        /* ボタン内のテキストコンテナ要素を左寄せにし、自動改行させる */
-        div.stButton > button data-testid="stMarkdownContainer", 
-        div.stButton > button p,
-        div.stButton > button span {
+        /* ボタンの中にある全階層の子要素（文字コンテナ）に対しても、中央揃えを破壊して完全左寄せ・自動折り返しを適用 */
+        div.stButton > button * {
+            text-align: left !important;
+            justify-content: flex-start !important;
+            align-items: center !important;
+            white-space: normal !important; /* 途中で途切れず自動改行 */
+            word-break: break-all !important; 
+            margin: 0 !important;
+            display: flex !important;
+            width: 100% !important;
+        }
+        
+        /* テキスト表示用のpタグの初期文字間や配置のズレを完全に除去 */
+        div.stButton > button p {
             text-align: left !important;
             width: 100% !important;
-            white-space: normal !important;
-            word-break: break-all !important;
-            display: block !important;
+            display: inline-block !important;
+            margin: 0 !important;
         }
         </style>
     """, unsafe_allow_html=True)
