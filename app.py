@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 # --- ⚠️ 最新のGASウェブアプリURLに差し替えてください ---
-GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyHKwCg_FtaCPvPyQUxH6xAHCYdTzp35gH47sc9PeKSilIqubs2Y2-5ncxV8bDRJNCe/exec"
+GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwYlJa2fXaBmU6aSMcMFFc0e4Rvii5O1a7eclvfEYdChbvxVg_xU0PVm95HtJ4IruNZ/exec"
 
 # --- 2. スプレッドシート取得関数 ---
 @st.cache_data(ttl=0)
