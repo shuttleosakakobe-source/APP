@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 # --- ⚠️ 最新のGASウェブアプリURLに差し替えてください ---
-GAS_WEBAPP_URL = https://script.google.com/macros/s/AKfycbwHh3IFsieR8xL5PTTjS6id2slofK-cAVRPOwo0UljCATHHvYjBiXG_YJaNewAcyF-F/exec"
+GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwHh3IFsieR8xL5PTTjS6id2slofK-cAVRPOwo0UljCATHHvYjBiXG_YJaNewAcyF-F/exec"
 
 # --- 2. スプレッドシート取得関数 ---
 @st.cache_data(ttl=0)
@@ -278,7 +278,6 @@ def confirm_task_dialog(task_name):
     with col1:
         if st.button("👍 はい（完了）", key="dlg_yes", type="primary", use_container_width=True):
             with st.spinner("スプレッドシートに反映中..."):
-                # 🔴GASの構造に合わせ、statusをCOMPLETE_TASKにして送信
                 res = post_to_gas({
                     "status": "COMPLETE_TASK",
                     "code": st.session_state.get('user_code', ''),
@@ -473,7 +472,6 @@ def main_screen():
             
         if status_click:
             with st.spinner("タイムカード記録中..."):
-                # 🔴タイムカード打刻であることをGASに100%識別させる送信内容
                 res = post_to_gas({
                     "status": "TIMECARD",
                     "code": st.session_state.get('user_code', ''),
@@ -630,7 +628,7 @@ def main_screen():
         # 📋 業務チェックリスト表示
         render_daily_checklist()
 
-    # --- 🚪 ログアウトボタン ---
+# --- 🚪 ログアウトボタン ---
     st.write("---")
     if st.button("🚪 ログアウト / ユーザー切替", key="footer_logout_btn", type="secondary", use_container_width=True):
         process_logout()
