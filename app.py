@@ -461,22 +461,12 @@ def main_screen():
         vals = list(current_user_data.values())
         st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
 
-    # 👤 名前表示（タップでメニュー・打刻表示のトグル）
+    # 👤 名前表示（タップすると打刻エリアの表示/非表示をトグル）
     st.markdown('<div class="user-label-btn">', unsafe_allow_html=True)
     if st.button(f"👤 {st.session_state.user_name} さん", key="hidden_toggle"):
-        # 3以外（0,1,2）なら打刻のトグルを行う
         if st.session_state.user_role != "0" and st.session_state.user_role != "3":
             st.session_state.show_timecard = not st.session_state.get('show_timecard', False)
-        # ログアウトを表示させるためのトグル
-        st.session_state.show_logout_menu = not st.session_state.get('show_logout_menu', False)
     st.markdown('</div>', unsafe_allow_html=True)
-
-    # 👤ボタンをタップした時に出現するログアウトエリア
-    if st.session_state.get('show_logout_menu', False):
-        m_col1, m_col2 = st.columns([2, 1])
-        with m_col2:
-            if st.button("🚪 ログアウト", key="header_logout_btn", type="secondary", use_container_width=True):
-                process_logout()
 
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
 
@@ -651,7 +641,11 @@ def main_screen():
         # 📅 新シート（gid=1054767407）連動版チェックリストを表示
         render_daily_checklist()
 
+    # --- 🚪 一番下に配置されたログアウトボタン ---
     st.write("---")
+    if st.button("🚪 ログアウト / ユーザー切替", key="footer_logout_btn", type="secondary", use_container_width=True):
+        process_logout()
+
     if os.path.exists("6.png"): st.image("6.png", width=110)
 
 # --- 7. 実行ロジック ---
