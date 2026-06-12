@@ -16,7 +16,7 @@ st.set_page_config(
     layout="centered"
 )
 
-# --- 【直接連携】最新のGASウェブアプリURLに更新完了 ---
+# --- ⚠️ 最新のGASウェブアプリURLに差し替えてください ---
 GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbx8XhYWjgYwhGR03AdasSQQl4WP_lyTXS71v6PDKopx3kh_Bkst3yEKIG3LtgI4Nefi/exec"
 
 # --- 2. スプレッドシート取得関数 ---
@@ -257,19 +257,7 @@ def post_to_gas(payload):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# ⏰ 勤怠送信用の関数
-def submit_attendance_direct(status):
-    res = post_to_gas({
-        "code": st.session_state.get('user_code', ''),
-        "name": st.session_state.get('user_name', ''),
-        "status": status
-    })
-    if res.get("status") == "success":
-        st.toast(f"🎉 {status} を記録しました！", icon="✅")
-    else:
-        st.error(f"通信に失敗しました: {res.get('message', 'Unknown Error')}")
-
-# --- 🔄 新シート(gid=1054767407)からクラウド同期型チェックリストを取得する関数 ---
+# --- 🔄 クラウド同期型チェックリストを取得する関数 ---
 def sync_checklist_from_cloud():
     res = post_to_gas({
         "status": "GET_CHECKLIST",
@@ -279,38 +267,43 @@ def sync_checklist_from_cloud():
         return set(res["completed"])
     return set()
 
-# --- ✍️ ボタンを押した「だれが」「いつ」を新シートに保存する関数 ---
+# --- ✍️ 業務チェックリスト専用の保存関数 ---
 def save_task_to_cloud(task_name):
+    # 🔴絶対にタイムカードに誤流出させないよう、目印(status)をガチガチに固定
     return post_to_gas({
-        "status": "COMPLETE_TASK",  # 👈 これを確実に追記します
+        "status": "COMPLETE_TASK",
         "code": st.session_state.get('user_code', ''),
         "name": st.session_state.get('user_name', ''),
         "task": task_name
     })
 
-# --- ⚡ 高速ポップアップ（ダイアログ）用関数 ---
+# --- ⚡ 確認ダイアログ ---
 @st.dialog("⚠️ 業務完了の確認")
 def confirm_task_dialog(task_name):
     st.write(f"**「{task_name}」** を完了にしますか？")
-    st.caption("操作ログが新しいスプレッドシートに送信され、他の管理メンバーの画面からもリアルタイムに消えます。")
+    st.caption("「業務チェックリスト」シートにリアルタイム反映され、画面から非表示になります。")
     st.write("")
     
     col1, col2 = st.columns(2)
     with col1:
         if st.button("👍 はい（完了）", key="dlg_yes", type="primary", use_container_width=True):
-            # ポップアップを最速で閉じるため、セッションに引き渡して即座に画面を書き換える
-            st.session_state.task_to_submit = task_name
+            # 🔴タイムカード側のバグ発火を完全に防ぐため、このスコープ（ダイアログ内）で即時通信を完結させる
+            with st.spinner("スプレッドシートに反映中..."):
+                res = save_task_to_cloud(task_name)
+                if res.get("status") == "success":
+                    st.toast(f"✅ 「{task_name}」を記録しました！", icon="🎉")
+                else:
+                    st.error(f"❌ 失敗: {res.get('message', '通信エラー')}")
             st.rerun()
     with col2:
         if st.button("❌ キャンセル", key="dlg_no", use_container_width=True):
             st.rerun()
 
-# --- 【全員連動・ロガー付き】確認ダイアログ付きデイリータスクボタン ---
+# --- 【全員連動】デイリータスクボタン ---
 def render_daily_checklist():
     st.write("")
     st.write("### 📅 業務チェックリスト（新シート連動・履歴ロガー付き）")
     
-    # AMタスク
     am_items = [
         "【データ抽出】 データ抽出 (38) ※※※代行手数料27%、32%と異なる実績抽出→検索",
         "【実績管理】 日次確認 [700→790→78] (①→F1→F9 / ②→F1→F8)",
@@ -328,19 +321,14 @@ def render_daily_checklist():
         "【**メンテ終了後**】 帳票出力 [1400→] (1.日次→Ent→Ent→1印刷 / 1.納品書)"
     ]
     
-    # PMタスク
     pm_items = [
         "【**メンテチェック終了後**】 定期発注 [400→421] 日付（発注済翌日〜発注日） Ｆ１→定期発注実行確認→Ｆ１",
         "【**メンテチェック終了後**】 追加発注 [400→422] ①→Ｆ１ 【あればその都度】"
     ]
     
-    # クラウドからリアルタイムに完了データを同期
     completed_tasks = sync_checklist_from_cloud()
-    
-    # AM / PM タブ
     tab_am, tab_pm = st.tabs(["🌅 AM（日次更新前必・メンテ終了後）", "🌇 PM（メンテチェック終了後）"])
 
-    # 🌅 AM タブ
     with tab_am:
         remaining_am = [item for item in am_items if item not in completed_tasks]
         if not remaining_am:
@@ -348,9 +336,8 @@ def render_daily_checklist():
         else:
             for item in remaining_am:
                 if st.button(f"⬜ {item}", key=f"btn_am_{item}", use_container_width=True):
-                    confirm_task_dialog(item)  # ポップアップを最速で起動
+                    confirm_task_dialog(item)
 
-    # 🌇 PM タブ
     with tab_pm:
         remaining_pm = [item for item in pm_items if item not in completed_tasks]
         if not remaining_pm:
@@ -358,23 +345,11 @@ def render_daily_checklist():
         else:
             for item in remaining_pm:
                 if st.button(f"⬜ {item}", key=f"btn_pm_{item}", use_container_width=True):
-                    confirm_task_dialog(item)  # ポップアップを最速で起動
+                    confirm_task_dialog(item)
 
 # --- 6. メイン画面 ---
 def main_screen():
     inject_pwa_blocker() 
-
-    # --- ⚡ ダイアログ裏でのGAS高速通信インターセプター ---
-    if "task_to_submit" in st.session_state and st.session_state.task_to_submit:
-        target_task = st.session_state.task_to_submit
-        st.session_state.task_to_submit = None  # 重複送信防止
-        with st.spinner("スプレッドシートに最速同期中..."):
-            res = save_task_to_cloud(target_task)
-            if res.get("status") == "success":
-                st.toast(f"✅ 「{target_task}」を記録・全員に同期しました！", icon="🎉")
-            else:
-                st.error(f"❌ スプレッドシートへの記録に失敗しました: {res.get('message', '通信エラー')}")
-        st.rerun()
 
     st.markdown("""
         <style>
@@ -487,20 +462,34 @@ def main_screen():
     if st.session_state.user_role == "0":
         st.session_state.show_timecard = True
 
-    # 🕒 タイムカードエリア
+    # 🕒 タイムカードエリア（🔴誤爆防止のため、完全にif文を独立）
     if st.session_state.user_role != "3" and st.session_state.get('show_timecard', False):
         st.write("")
         st.write("### 🕒 勤怠・所在打刻")
         att_col1, att_col2, att_col3 = st.columns(3)
+        
+        # 変数初期化で誤送信をガード
+        status_click = None
         with att_col1:
-            if st.button("🌅 出社", use_container_width=True):
-                submit_attendance_direct("出社")
+            if st.button("🌅 出社", key="time_in_btn", use_container_width=True): status_click = "出社"
         with att_col2:
-            if st.button("🚗 帰社", use_container_width=True):
-                submit_attendance_direct("帰社")
+            if st.button("🚗 帰社", key="time_mid_btn", use_container_width=True): status_click = "帰社"
         with att_col3:
-            if st.button("🌃 退社", use_container_width=True):
-                submit_attendance_direct("退社")
+            if st.button("🌃 退社", key="time_out_btn", use_container_width=True): status_click = "退社"
+            
+        if status_click:
+            with st.spinner("タイムカード記録中..."):
+                res = post_to_gas({
+                    "status": "TIMECARD",  # 明確に区別
+                    "code": st.session_state.get('user_code', ''),
+                    "name": st.session_state.get('user_name', ''),
+                    "timecard_status": status_click
+                })
+                if res.get("status") == "success":
+                    st.toast(f"🎉 {status_click} を記録しました！", icon="✅")
+                else:
+                    st.error(f"通信に失敗しました: {res.get('message')}")
+            st.rerun()
         st.write("---")
 
     # --- 📅 「次回訪問日」＆「本日の予定」 ---
@@ -643,9 +632,10 @@ def main_screen():
         '''
         st.markdown(grid_html_3, unsafe_allow_html=True)
         
+        # 📋 業務チェックリスト表示
         render_daily_checklist()
 
-    # --- 🚪 一番下に配置されたログアウトボタン ---
+    # --- 🚪 ログアウトボタン ---
     st.write("---")
     if st.button("🚪 ログアウト / ユーザー切替", key="footer_logout_btn", type="secondary", use_container_width=True):
         process_logout()
@@ -655,9 +645,8 @@ def main_screen():
 # --- 7. 実行ロジック ---
 if 'login_status' not in st.session_state: st.session_state.login_status = False
 if 'logout_requested' not in st.session_state: st.session_state.logout_requested = False
-if 'task_to_submit' not in st.session_state: st.session_state.task_to_submit = None
 
-# ローカルストレージ自動ログイン判定用
+# ローカルストレージ自動ログイン
 if not st.session_state.login_status and not st.session_state.logout_requested:
     local_name = st_javascript("localStorage.getItem('shuttle_user_name');")
     local_role = st_javascript("localStorage.getItem('shuttle_user_role');")
