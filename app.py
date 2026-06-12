@@ -76,7 +76,7 @@ def get_visit_schedule_data(user_code):
             user_col_idx = idx
             break
             
-    if user_col_idx ==" -1":
+    if user_col_idx == -1:
         try:
             target_int = int(float(user_code))
             for idx, col in enumerate(code_row):
@@ -311,7 +311,6 @@ def render_daily_checklist():
         "【**メンテチェック終了後**】 追加発注 [400→422] ①→Ｆ１ 【あればその都度】"
     ]
     
-    # 💥 キャッシュを無視して、最新の完了済みリストを毎回強制取得
     res = post_to_gas({
         "status": "GET_CHECKLIST",
         "date": datetime.now().strftime("%Y-%m-%d")
@@ -342,6 +341,7 @@ def render_daily_checklist():
 def main_screen():
     inject_pwa_blocker() 
 
+    # 🎨 CSSスタイルの大幅アップデート（完全に左詰め＆自動折り返し対応）
     st.markdown("""
         <style>
         header {visibility: hidden; height: 0px !important;}
@@ -415,18 +415,28 @@ def main_screen():
         .today-title { font-size: 12px; font-weight: bold; color: #0056b3; }
         .today-val { font-size: 14px; font-weight: bold; color: #cd1212; }
         
+        /* 🎯 【最重要】Streamlit標準ボタンのインナースタイルを強制的に「左詰め・折り返し」に書き換え */
         div.stButton > button {
             font-weight: bold !important;
             border-radius: 10px !important;
-            height: 45px !important;
+            height: auto !important;
+            min-height: 45px !important;
+            padding: 8px 12px !important;
+            text-align: left !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
         }
         
-        /* 🎯 チェックリスト等、すべてのボタン内の文字を左詰めにし、はみ出しを防止する */
-        div.stButton > button p {
+        /* ボタン内のテキストコンテナ要素を左寄せにし、自動改行させる */
+        div.stButton > button data-testid="stMarkdownContainer", 
+        div.stButton > button p,
+        div.stButton > button span {
             text-align: left !important;
             width: 100% !important;
-            justify-content: flex-start !important;
-            display: flex !important;
+            white-space: normal !important;
+            word-break: break-all !important;
+            display: block !important;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -440,7 +450,6 @@ def main_screen():
         vals = list(current_user_data.values())
         st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
 
-    # 👤 名前表示
     st.markdown('<div class="user-label-btn">', unsafe_allow_html=True)
     if st.button(f"👤 {st.session_state.user_name} さん", key="hidden_toggle"):
         if st.session_state.user_role != "0" and st.session_state.user_role != "3":
@@ -449,7 +458,6 @@ def main_screen():
 
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
 
-    # 🔔 お知らせ枠
     announcement = data[0].get('お知らせ', '安全運転でお願いします')
     st.markdown(f'''
         <div style="background-color:#fffbe6; border:2px solid #ffe58f; padding:10px; border-radius:10px; display:flex; align-items:center; margin-top: 5px;">
@@ -461,7 +469,6 @@ def main_screen():
     if st.session_state.user_role == "0":
         st.session_state.show_timecard = True
 
-    # 🕒 タイムカードエリア
     if st.session_state.user_role != "3" and st.session_state.get('show_timecard', False):
         st.write("")
         st.write("### 🕒 勤怠・所在打刻")
@@ -490,7 +497,6 @@ def main_screen():
             st.rerun()
         st.write("---")
 
-    # --- 📅 「次回訪問日」＆「本日の予定」 ---
     if st.session_state.user_role != "3":
         visit_info, today_sched = get_visit_schedule_data(st.session_state.get('user_code', ''))
         w1_disp = visit_info.get("1W", {}).get("display", "--/--")
@@ -528,7 +534,6 @@ def main_screen():
                 </div>
             ''', unsafe_allow_html=True)
 
-    # 🛠️ 管理者エリア
     if st.session_state.user_role in ["0", "1"]:
         check_sheet_rows = load_sheet_data(gid="1552856942")
         check_alert = False
@@ -574,7 +579,6 @@ def main_screen():
             sel = st.selectbox("対象を選択", opts, label_visibility="collapsed")
             st.link_button(f"👉 確認を開く", alert_rows[opts.index(sel)]['url'], use_container_width=True)
 
-    # 🔘 メインボタン 4つ
     if st.session_state.user_role != "3":
         b1 = get_img_html("3.png", "📄")
         b2 = get_img_html("4.png", "📋", alert=st.session_state.needs_alert)
@@ -591,7 +595,6 @@ def main_screen():
         '''
         st.markdown(grid_html, unsafe_allow_html=True)
 
-    # 🌟 メンテナンス管理メニュー
     if st.session_state.user_role in ["0", "3"]:
         st.write("---")
         st.write("### 🛠️ メンテナンス管理メニュー")
@@ -630,10 +633,8 @@ def main_screen():
         '''
         st.markdown(grid_html_3, unsafe_allow_html=True)
         
-        # 📋 業務チェックリスト表示
         render_daily_checklist()
 
-# --- 🚪 ログアウトボタン ---
     st.write("---")
     if st.button("🚪 ログアウト / ユーザー切替", key="footer_logout_btn", type="secondary", use_container_width=True):
         process_logout()
@@ -644,7 +645,6 @@ def main_screen():
 if 'login_status' not in st.session_state: st.session_state.login_status = False
 if 'logout_requested' not in st.session_state: st.session_state.logout_requested = False
 
-# ローカルストレージ自動ログイン
 if not st.session_state.login_status and not st.session_state.logout_requested:
     local_name = st_javascript("localStorage.getItem('shuttle_user_name');")
     local_role = st_javascript("localStorage.getItem('shuttle_user_role');")
