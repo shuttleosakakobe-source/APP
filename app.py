@@ -16,6 +16,9 @@ st.set_page_config(
     layout="centered"
 )
 
+# --- 🔄 自動更新（ミリ秒指定: 10000ms = 10秒ごとに画面を最新に同期） ---
+st.fragment(run_every=10)
+
 # --- ⚠️ 最新のGASウェブアプリURLに差し替えてください ---
 GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwHh3IFsieR8xL5PTTjS6id2slofK-cAVRPOwo0UljCATHHvYjBiXG_YJaNewAcyF-F/exec"
 
