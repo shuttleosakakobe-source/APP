@@ -76,7 +76,7 @@ def get_visit_schedule_data(user_code):
             user_col_idx = idx
             break
             
-    if user_col_idx == -1:
+    if user_col_idx ==" -1":
         try:
             target_int = int(float(user_code))
             for idx, col in enumerate(code_row):
@@ -147,7 +147,7 @@ def get_visit_schedule_data(user_code):
             
     w2_obj = None
     for sched in all_schedules:
-        if sched["date"] >= today model AND sched["type"] == w2_target:
+        if sched["date"] >= today and sched["type"] == w2_target:
             w2_obj = sched
             visit_dates["2W"] = {"display": get_disp_str(sched)}
             break
@@ -421,7 +421,7 @@ def main_screen():
             height: 45px !important;
         }
         
-        /* 🎯 【追加修正】チェックリスト等、すべてのボタン内の文字を左詰めにし、はみ出しを防止する */
+        /* 🎯 チェックリスト等、すべてのボタン内の文字を左詰めにし、はみ出しを防止する */
         div.stButton > button p {
             text-align: left !important;
             width: 100% !important;
