@@ -16,8 +16,8 @@ st.set_page_config(
     layout="centered"
 )
 
-# --- 【直接連携】GASウェブアプリURL ---
-GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwMUBZHk4bIrpNmopGkk2huKLdkhdzFynxqSuDxfRD_9mcIFet_osyQIg4V-CKovfQu/exec"
+# --- 【直接連携】最新のGASウェブアプリURLに更新完了 ---
+GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwyYGbBuZKK_xXiA3wl7fpi1WhPT0RjlAaw5qHOFWsf8t83zEa23qWWbFdZnNaUDt_y/exec"
 
 # --- 2. スプレッドシート取得関数 ---
 @st.cache_data(ttl=0)
@@ -298,7 +298,7 @@ def confirm_task_dialog(task_name):
     col1, col2 = st.columns(2)
     with col1:
         if st.button("👍 はい（完了）", key="dlg_yes", type="primary", use_container_width=True):
-            # ダイアログを閉じる処理を最優先するためセッションに引き渡し即終了
+            # ポップアップを最速で閉じるため、セッションに引き渡して即座に画面を書き換える
             st.session_state.task_to_submit = task_name
             st.rerun()
     with col2:
@@ -324,7 +324,7 @@ def render_daily_checklist():
         "【棚卸調査票】 [500→582] (1：日時→2：RFDIアプリ →F1印刷)",
         "【**メンテ終了後**】 追加発注 [400→422] (①→F1)",
         "【**メンテ終了後**】 実績表出力 [指定店のみ] (売上納品実績→日にち[実績日]→検索・決定→検索→画面印刷) ※プレイヤーズ",
-        " ========================================\n【**メンテ終了後**】 納品書 [300→331] (日付[前日発送分]→F1)",
+        "【**メンテ終了後**】 納品書 [300→331] (日付[前日発送分]→F1)",
         "【**メンテ終了後**】 帳票出力 [1400→] (1.日次→Ent→Ent→1印刷 / 1.納品書)"
     ]
     
@@ -364,11 +364,11 @@ def render_daily_checklist():
 def main_screen():
     inject_pwa_blocker() 
 
-    # --- ダイアログ裏でのGAS送信インターセプター（最速処理用） ---
+    # --- ⚡ ダイアログ裏でのGAS高速通信インターセプター ---
     if "task_to_submit" in st.session_state and st.session_state.task_to_submit:
         target_task = st.session_state.task_to_submit
-        st.session_state.task_to_submit = None  # 重複防止
-        with st.spinner("スプレッドシートに同期中..."):
+        st.session_state.task_to_submit = None  # 重複送信防止
+        with st.spinner("スプレッドシートに最速同期中..."):
             res = save_task_to_cloud(target_task)
             if res.get("status") == "success":
                 st.toast(f"✅ 「{target_task}」を記録・全員に同期しました！", icon="🎉")
