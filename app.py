@@ -287,7 +287,7 @@ def confirm_task_dialog(task_name):
 @st.fragment(run_every=10)
 def render_daily_checklist():
     st.write("")
-    st.write("### 📅 業務チェックリスト（自動同期・10秒更新）")
+    st.write("### 📅 業務チェックリスト")
     
     am_items = [
         "【データ抽出】 データ抽出 (38) ※※※代行手数料27%、32%と異なる実績抽出→検索",
@@ -586,7 +586,7 @@ def main_screen():
     # 🌟 メンテナンス管理メニュー
     if st.session_state.user_role in ["0", "3"]:
         st.write("---")
-        st.write("### 🛠️ メンテナンス管理メニュー (権限3機能)")
+        st.write("### 🛠️ メンテナンス管理メニュー")
 
         url_sheet1 = "https://docs.google.com/spreadsheets/d/16JhXHMdYPoOIQmPBgd2sVclYkdYip6arRHtr86hr9hg/export?format=csv&gid=1365103622"
         url_sheet2 = "https://docs.google.com/spreadsheets/d/1DShHig4iOhNXOkxMfALTRhyH0P5dtVpdBkNXvVQPC3g/export?format=csv&gid=1365103622"
