@@ -54,7 +54,7 @@ def parse_flexible_date(date_str):
     match_slash = re.match(r'^(\d{4})/(\d{1,2})/(\d{1,2})', cleaned)
     if match_slash:
         try:
-            year, month, day = map(int, match_slash.groups())
+            year, month, day = map(int, match_jp.groups())
             return datetime(year, month, day).date()
         except:
             return None
@@ -76,7 +76,7 @@ def get_visit_schedule_data(user_code):
             user_col_idx = idx
             break
             
-    if user_col_idx = -1:
+    if user_col_idx == -1:  # 🛠️ ここを「==」に修正いたしました
         try:
             target_int = int(float(user_code))
             for idx, col in enumerate(code_row):
@@ -341,7 +341,7 @@ def render_daily_checklist():
 def main_screen():
     inject_pwa_blocker() 
 
-    # 🎨 CSSスタイルの完全修正版（変な改行要素を徹底排除）
+    # 🎨 CSSスタイル
     st.markdown("""
         <style>
         header {visibility: hidden; height: 0px !important;}
@@ -415,7 +415,7 @@ def main_screen():
         .today-title { font-size: 12px; font-weight: bold; color: #0056b3; }
         .today-val { font-size: 14px; font-weight: bold; color: #cd1212; }
         
-        /* 🎯 【重要】ボタン自体のレイアウト設定。幅100%にして、中身を左端に寄せる */
+        /* ボタン自体のレイアウト設定。幅100%にして、中身を左端に寄せる */
         div.stButton > button {
             width: 100% !important;
             height: auto !important;
@@ -428,12 +428,12 @@ def main_screen():
             justify-content: flex-start !important; 
         }
         
-        /* 🎯 ボタンの中にあるテキスト（pタグ）だけを完全にターゲットにして左詰め＋自動改行 */
+        /* ボタンの中にあるテキスト（pタグ）だけを完全にターゲットにして左詰め＋自動改行 */
         div.stButton > button p {
             text-align: left !important;
             width: 100% !important;
             display: block !important;
-            white-space: normal !important; /* はみ出さずに自然に折り返す */
+            white-space: normal !important; 
             word-break: break-all !important;
             margin: 0 !important;
             padding: 0 !important;
