@@ -30,7 +30,7 @@ def load_sheet_data(gid="0", custom_url=None):
         target_url = check_sheet_url if gid == "1552856942" else f"{base_url}{gid}"
     
     try:
-        response = urllib.request.urlopen(target_url)
+        response = urllib.request.urlopen(target_url, timeout=10)
         content = response.read().decode('utf-8')
         f = io.StringIO(content)
         reader = csv.reader(f)
@@ -252,7 +252,7 @@ def post_to_gas(payload):
         headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
     )
     try:
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req, timeout=10) as response:
             return json.loads(response.read().decode('utf-8'))
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -267,7 +267,7 @@ def submit_attendance_direct(status):
     if res.get("status") == "success":
         st.toast(f"🎉 {status} を記録しました！", icon="✅")
     else:
-        st.error("通信に失敗しました。")
+        st.error(f"通信に失敗しました: {res.get('message', 'Unknown Error')}")
 
 # --- 🔄 新シート(gid=1054767407)からクラウド同期型チェックリストを取得する関数 ---
 def sync_checklist_from_cloud():
@@ -281,7 +281,7 @@ def sync_checklist_from_cloud():
 
 # --- ✍️ ボタンを押した「だれが」「いつ」を新シートに保存する関数 ---
 def save_task_to_cloud(task_name):
-    post_to_gas({
+    return post_to_gas({
         "status": "COMPLETE_TASK",
         "code": st.session_state.get('user_code', ''),
         "name": st.session_state.get('user_name', ''),
@@ -298,8 +298,8 @@ def confirm_task_dialog(task_name):
     col1, col2 = st.columns(2)
     with col1:
         if st.button("👍 はい（完了）", key="dlg_yes", type="primary", use_container_width=True):
-            save_task_to_cloud(task_name)
-            st.toast("✅ シートへ記録し同期しました！")
+            # ダイアログを閉じる処理を最優先するためセッションに引き渡し即終了
+            st.session_state.task_to_submit = task_name
             st.rerun()
     with col2:
         if st.button("❌ キャンセル", key="dlg_no", use_container_width=True):
@@ -324,7 +324,7 @@ def render_daily_checklist():
         "【棚卸調査票】 [500→582] (1：日時→2：RFDIアプリ →F1印刷)",
         "【**メンテ終了後**】 追加発注 [400→422] (①→F1)",
         "【**メンテ終了後**】 実績表出力 [指定店のみ] (売上納品実績→日にち[実績日]→検索・決定→検索→画面印刷) ※プレイヤーズ",
-        "【**メンテ終了後**】 納品書 [300→331] (日付[前日発送分]→F1)",
+        " ========================================\n【**メンテ終了後**】 納品書 [300→331] (日付[前日発送分]→F1)",
         "【**メンテ終了後**】 帳票出力 [1400→] (1.日次→Ent→Ent→1印刷 / 1.納品書)"
     ]
     
@@ -363,6 +363,18 @@ def render_daily_checklist():
 # --- 6. メイン画面 ---
 def main_screen():
     inject_pwa_blocker() 
+
+    # --- ダイアログ裏でのGAS送信インターセプター（最速処理用） ---
+    if "task_to_submit" in st.session_state and st.session_state.task_to_submit:
+        target_task = st.session_state.task_to_submit
+        st.session_state.task_to_submit = None  # 重複防止
+        with st.spinner("スプレッドシートに同期中..."):
+            res = save_task_to_cloud(target_task)
+            if res.get("status") == "success":
+                st.toast(f"✅ 「{target_task}」を記録・全員に同期しました！", icon="🎉")
+            else:
+                st.error(f"❌ スプレッドシートへの記録に失敗しました: {res.get('message', '通信エラー')}")
+        st.rerun()
 
     st.markdown("""
         <style>
@@ -454,7 +466,7 @@ def main_screen():
         vals = list(current_user_data.values())
         st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
 
-    # 👤 名前表示（タップすると打刻エリアの表示/非表示をトグル）
+    # 👤 名前表示
     st.markdown('<div class="user-label-btn">', unsafe_allow_html=True)
     if st.button(f"👤 {st.session_state.user_name} さん", key="hidden_toggle"):
         if st.session_state.user_role != "0" and st.session_state.user_role != "3":
@@ -484,7 +496,7 @@ def main_screen():
             if st.button("🌅 出社", use_container_width=True):
                 submit_attendance_direct("出社")
         with att_col2:
-            if st.button("🌅 帰社", use_container_width=True):
+            if st.button("🚗 帰社", use_container_width=True):
                 submit_attendance_direct("帰社")
         with att_col3:
             if st.button("🌃 退社", use_container_width=True):
@@ -529,7 +541,7 @@ def main_screen():
                 </div>
             ''', unsafe_allow_html=True)
 
-    # 🛠️ 管理者エリア（権限「0」または「1」）
+    # 🛠️ 管理者エリア
     if st.session_state.user_role in ["0", "1"]:
         check_sheet_rows = load_sheet_data(gid="1552856942")
         check_alert = False
@@ -575,7 +587,7 @@ def main_screen():
             sel = st.selectbox("対象を選択", opts, label_visibility="collapsed")
             st.link_button(f"👉 確認を開く", alert_rows[opts.index(sel)]['url'], use_container_width=True)
 
-    # 🔘 メインボタン 4つ（権限3以外）
+    # 🔘 メインボタン 4つ
     if st.session_state.user_role != "3":
         b1 = get_img_html("3.png", "📄")
         b2 = get_img_html("4.png", "📋", alert=st.session_state.needs_alert)
@@ -592,7 +604,7 @@ def main_screen():
         '''
         st.markdown(grid_html, unsafe_allow_html=True)
 
-    # 🌟 メンテナンス管理メニュー（権限「0」または「3」で見れる人全員にリンク）
+    # 🌟 メンテナンス管理メニュー
     if st.session_state.user_role in ["0", "3"]:
         st.write("---")
         st.write("### 🛠️ メンテナンス管理メニュー (権限3機能)")
@@ -631,7 +643,6 @@ def main_screen():
         '''
         st.markdown(grid_html_3, unsafe_allow_html=True)
         
-        # 📅 新シート連動版チェックリストを表示
         render_daily_checklist()
 
     # --- 🚪 一番下に配置されたログアウトボタン ---
@@ -644,6 +655,7 @@ def main_screen():
 # --- 7. 実行ロジック ---
 if 'login_status' not in st.session_state: st.session_state.login_status = False
 if 'logout_requested' not in st.session_state: st.session_state.logout_requested = False
+if 'task_to_submit' not in st.session_state: st.session_state.task_to_submit = None
 
 # ローカルストレージ自動ログイン判定用
 if not st.session_state.login_status and not st.session_state.logout_requested:
