@@ -76,7 +76,7 @@ def get_visit_schedule_data(user_code):
             user_col_idx = idx
             break
             
-    if user_col_idx == -1:
+    if user_col_idx = -1:
         try:
             target_int = int(float(user_code))
             for idx, col in enumerate(code_row):
@@ -341,7 +341,7 @@ def render_daily_checklist():
 def main_screen():
     inject_pwa_blocker() 
 
-    # 🎨 CSSスタイルの完全決定版（ボタンのインナーFlexbox階層まで徹底的に左揃え＆100%幅を強制）
+    # 🎨 CSSスタイルの完全修正版（変な改行要素を徹底排除）
     st.markdown("""
         <style>
         header {visibility: hidden; height: 0px !important;}
@@ -415,40 +415,28 @@ def main_screen():
         .today-title { font-size: 12px; font-weight: bold; color: #0056b3; }
         .today-val { font-size: 14px; font-weight: bold; color: #cd1212; }
         
-        # --- 📌 【超重要】チェックリスト用のボタンを完全に100%幅の「完全左詰め・左揃え」に強制上書き ---
+        /* 🎯 【重要】ボタン自体のレイアウト設定。幅100%にして、中身を左端に寄せる */
         div.stButton > button {
             width: 100% !important;
             height: auto !important;
-            min-height: 48px !important;
-            padding: 10px 16px !important;
+            min-height: 46px !important;
+            padding: 10px 14px !important;
             border-radius: 10px !important;
             font-weight: bold !important;
-            
-            /* Streamlitがデフォルトで持っている中央寄せFlexBox構造を、強制的に左端寄せに変更 */
             display: flex !important;
             align-items: center !important;
             justify-content: flex-start !important; 
-            text-align: left !important;
         }
         
-        /* ボタンの中にある全階層の子要素（文字コンテナ）に対しても、中央揃えを破壊して完全左寄せ・自動折り返しを適用 */
-        div.stButton > button * {
-            text-align: left !important;
-            justify-content: flex-start !important;
-            align-items: center !important;
-            white-space: normal !important; /* 途中で途切れず自動改行 */
-            word-break: break-all !important; 
-            margin: 0 !important;
-            display: flex !important;
-            width: 100% !important;
-        }
-        
-        /* テキスト表示用のpタグの初期文字間や配置のズレを完全に除去 */
+        /* 🎯 ボタンの中にあるテキスト（pタグ）だけを完全にターゲットにして左詰め＋自動改行 */
         div.stButton > button p {
             text-align: left !important;
             width: 100% !important;
-            display: inline-block !important;
+            display: block !important;
+            white-space: normal !important; /* はみ出さずに自然に折り返す */
+            word-break: break-all !important;
             margin: 0 !important;
+            padding: 0 !important;
         }
         </style>
     """, unsafe_allow_html=True)
