@@ -147,7 +147,7 @@ def get_visit_schedule_data(user_code):
             
     w2_obj = None
     for sched in all_schedules:
-        if sched["date"] >= today and sched["type"] == w2_target:
+        if sched["date"] >= today model AND sched["type"] == w2_target:
             w2_obj = sched
             visit_dates["2W"] = {"display": get_disp_str(sched)}
             break
@@ -286,7 +286,7 @@ def confirm_task_dialog(task_name):
 # --- 🔄 【全員連動・10秒自動同期】チェックリスト専用コンポーネント ---
 @st.fragment(run_every=10)
 def render_daily_checklist():
-    st.write("")
+    st.write("---")
     st.write("### 📅 業務チェックリスト")
     
     am_items = [
@@ -419,6 +419,14 @@ def main_screen():
             font-weight: bold !important;
             border-radius: 10px !important;
             height: 45px !important;
+        }
+        
+        /* 🎯 【追加修正】チェックリスト等、すべてのボタン内の文字を左詰めにし、はみ出しを防止する */
+        div.stButton > button p {
+            text-align: left !important;
+            width: 100% !important;
+            justify-content: flex-start !important;
+            display: flex !important;
         }
         </style>
     """, unsafe_allow_html=True)
