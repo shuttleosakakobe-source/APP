@@ -16,8 +16,8 @@ st.set_page_config(
     layout="centered"
 )
 
-# --- GASウェブアプリURL ---
-GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwDvTJlbULcKSYKx-Hyp6tU-Gh4ua7j-tglY9VWx2UqyyLxTPv8EgAb5vdQpq3Auxu9/exec"
+# --- 【直接連携】GASウェブアプリURL ---
+GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwMUBZHk4bIrpNmopGkk2huKLdkhdzFynxqSuDxfRD_9mcIFet_osyQIg4V-CKovfQu/exec"
 
 # --- 2. スプレッドシート取得関数 ---
 @st.cache_data(ttl=0)
@@ -147,7 +147,7 @@ def get_visit_schedule_data(user_code):
             
     w2_obj = None
     for sched in all_schedules:
-        if sched["date"] >= today and sched["type"] == w2_target:
+        if sched["date"] >= today Mud sched["type"] == w2_target:
             w2_obj = sched
             visit_dates["2W"] = {"display": get_disp_str(sched)}
             break
@@ -198,18 +198,6 @@ def set_login_storage(name, url, alert, role, code):
     st_javascript(f"localStorage.setItem('shuttle_user_role', '{role}');")
     st_javascript(f"localStorage.setItem('shuttle_user_code', '{code}');")
 
-# --- 🔄 ログアウト処理関数 ---
-def clear_login_storage():
-    st_javascript("localStorage.removeItem('shuttle_user_name');")
-    st_javascript("localStorage.removeItem('shuttle_user_url');")
-    st_javascript("localStorage.removeItem('shuttle_needs_alert');")
-    st_javascript("localStorage.removeItem('shuttle_user_role');")
-    st_javascript("localStorage.removeItem('shuttle_user_code');")
-    if 'user_name' in st.session_state: del st.session_state.user_name
-    if 'user_code' in st.session_state: del st.session_state.user_code
-    if 'user_role' in st.session_state: del st.session_state.user_role
-    st.rerun()
-
 # --- 5. 強制アイコン＆ダウンロードブロック関数 ---
 def inject_pwa_blocker():
     if os.path.exists("icon.png"):
@@ -258,7 +246,7 @@ def post_to_gas(payload):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# ⏰ 勤怠送信用の関数
+# ⏰ 勤怠送信用の関数（復元）
 def submit_attendance_direct(status):
     res = post_to_gas({
         "code": st.session_state.get('user_code', ''),
@@ -270,18 +258,17 @@ def submit_attendance_direct(status):
     else:
         st.error("通信に失敗しました。")
 
-# --- 🔄 新シートの列配置から本日の完了状況を同期する関数 ---
+# --- 🔄 新シート(gid=1054767407)からクラウド同期型チェックリストを取得する関数 ---
 def sync_checklist_from_cloud():
     res = post_to_gas({
         "status": "GET_CHECKLIST",
-        "date": datetime.now().strftime("%Y/%m/%d"),
-        "name": st.session_state.get('user_name', '')
+        "date": datetime.now().strftime("%Y-%m-%d")
     })
     if res.get("status") == "success" and "completed" in res:
         return set(res["completed"])
     return set()
 
-# --- ✍️ ボタンを押したタスクの列に完了時間を記録する関数 ---
+# --- ✍️ ボタンを押した「だれが」「いつ」を新シートに保存する関数 ---
 def save_task_to_cloud(task_name):
     post_to_gas({
         "status": "COMPLETE_TASK",
@@ -290,116 +277,86 @@ def save_task_to_cloud(task_name):
         "task": task_name
     })
 
-# --- 💬 ポップアップ（モーダルダイアログ） ---
-@st.dialog("業務完了の確認")
-def show_confirm_dialog(task_name):
-    st.write(f"**「{task_name}」** を完了にしますか？")
-    st.caption("※スプレッドシートの該当列に完了時刻が保存され、チェックリストから非表示になります。")
-    st.write("")
-    
-    conf_col1, conf_col2 = st.columns(2)
-    with conf_col1:
-        if st.button("👍 はい（ログ記録）", key="dlg_yes", type="primary", use_container_width=True):
-            save_task_to_cloud(task_name) 
-            st.toast(f"✅ シートの専用列への時刻書き込みが完了しました！")
-            st.rerun()
-    with conf_col2:
-        if st.button("❌ いいえ", key="dlg_no", use_container_width=True):
-            st.rerun()
-
-# --- 【見出し・行管理完全連動】デイリータスクボタン ---
+# --- 【全員連動・ロガー付き】確認ダイアログ付きデイリータスクボタン ---
 def render_daily_checklist():
     st.write("")
-    st.write("### 📅 業務チェックリスト（マトリックスシート連動型）")
+    st.write("### 📅 業務チェックリスト（新シート連動・履歴ロガー付き）")
     
-    # 1行目の見出しと1文字一句ズレがないよう定義
+    # AMタスク
     am_items = [
         "【データ抽出】 データ抽出 (38) ※※※代行手数料27%、32%と異なる実績抽出→検索",
         "【実績管理】 日次確認 [700→790→78] (①→F1→F9 / ②→F1→F8)",
-        "【実績管理】 日次締 [700→792] (①→入金合計のみ / ②→実績日と休日分)",
+        "【実績管理】 日次締 [700→792] (①→入金合計のみ / ②→実績日と以降の休日分)",
         "【実績管理】 実績送信 [700→734] (①→②表示しない → 全選択①→F1)",
         "【発注】 クローバー返却 [F1] (出力なし)",
-        "【レンタル準備】 出庫表・ピッキングリスト [300→333] (①→翌日 / ②→最終)",
-        "【帳票出力】 1400→ (日次 / 出庫表 / ピッキング表[店舗合計・F1])",
-        "【発注状況照会】 TAN1D引当数 [400→411] (③売切→出庫予定[最終]→F1→F7)",
-        "【入出庫・在庫】 担当者別出庫 [500→511] (1.全て選択→F1 ※紙なし)",
+        "【レンタルサービス準備】 出庫表・ピッキングリスト [300→333] (①→出庫表[翌日日付] / ②→ピッキング表[発注済最終日付])",
+        "【帳票出力】 1400→ (1.日次→Ent→Ent→1印刷 / 1.出庫表 / 1.ピッキング表[店舗合計] / 1.ピッキング表→F1)",
+        "【発注状況一覧照会】 TAN1D引当数 [400→411] (③売切商品→出庫予定日[発注済最終日付] → 商品[TAN1D]→F1→F7印刷)",
+        "【入出庫・在庫管理】 担当者別出庫 [500→511] (1.全て選択→F1 ※紙は出ない)",
         "【棚卸調査票】 [500→582] (1：日時→2：RFDIアプリ →F1印刷)",
-        "【メンテ終了後】 追加発注 [400→422] (①→F1)",
-        "【メンテ終了後】 実績表出力 [指定店のみ] (決定→検索→画面印刷) ※プレイヤーズ",
-        "【メンテ終了後】 納品書 [300→331] (日付[前日発送分]→F1)",
-        "【メンテ終了後】 帳票出力 [1400→] (1.日次→Ent→Ent→1印刷 / 1.納品書)"
+        "【**メンテ終了後**】 追加発注 [400→422] (①→F1)",
+        "【**メンテ終了後**】 実績表出力 [指定店のみ] (売上納品実績→日にち[実績日]→検索・決定→検索→画面印刷) ※プレイヤーズ",
+        "【**メンテ終了後**】 納品書 [300→331] (日付[前日発送分]→F1)",
+        "【**メンテ終了後**】 帳票出力 [1400→] (1.日次→Ent→Ent→1印刷 / 1.納品書)"
     ]
     
+    # PMタスク
     pm_items = [
-        "【メンテチェック終了後】 定期発注 [400→421] 日付 Ｆ１→定期発注実行確認→Ｆ１",
-        "【メンテチェック終了後】 追加発注 [400→422] ①→Ｆ１ 【あればその都度】"
+        "【**メンテチェック終了後**】 定期発注 [400→421] 日付（発注済翌日〜発注日） Ｆ１→定期発注実行確認→Ｆ１",
+        "【**メンテチェック終了後**】 追加発注 [400→422] ①→Ｆ１ 【あればその都度】"
     ]
     
-    # 自分の本日のタスク状況を取得
+    # クラウドからリアルタイムに完了データを同期
     completed_tasks = sync_checklist_from_cloud()
+    
+    if "confirming_task" not in st.session_state:
+        st.session_state.confirming_task = None
 
+    # AM / PM タブ
     tab_am, tab_pm = st.tabs(["🌅 AM（日次更新前必・メンテ終了後）", "🌇 PM（メンテチェック終了後）"])
+    
+    # --- 確認ダイアログの処理エリア ---
+    if st.session_state.confirming_task:
+        task_to_confirm = st.session_state.confirming_task
+        st.warning(f"確認：「{task_to_confirm}」を完了にしますか？\n操作ログが新しいスプレッドシートに送信され、他の管理メンバーの画面からも消えます。")
+        conf_col1, conf_col2 = st.columns(2)
+        with conf_col1:
+            if st.button("👍 はい（完了してログ記録）", key="confirm_yes", type="primary", use_container_width=True):
+                save_task_to_cloud(task_to_confirm) # クラウド側（新シート）へ書き込み
+                st.session_state.confirming_task = None
+                st.toast(f"✅ シートへのログ記録と全員の同期が完了しました！")
+                st.rerun()
+        with conf_col2:
+            if st.button("❌ いいえ", key="confirm_no", use_container_width=True):
+                st.session_state.confirming_task = None
+                st.rerun()
+        st.write("---")
 
+    disabled_flag = (st.session_state.confirming_task is not None)
+
+    # 🌅 AM タブ
     with tab_am:
         remaining_am = [item for item in am_items if item not in completed_tasks]
         if not remaining_am:
             st.success("🎉 本日のAM業務・更新タスクはすべて完了しています！")
         else:
             for item in remaining_am:
-                if st.button(f"⬜ {item}", key=f"btn_am_{item}", use_container_width=True):
-                    show_confirm_dialog(item)
+                if st.button(f"⬜ {item}", key=f"btn_am_{item}", use_container_width=True, disabled=disabled_flag):
+                    st.session_state.confirming_task = item
+                    st.rerun()
 
+    # 🌇 PM タブ
     with tab_pm:
         remaining_pm = [item for item in pm_items if item not in completed_tasks]
         if not remaining_pm:
             st.success("🎉 本日のPM業務（定期・追加発注）はすべて完了しています！")
         else:
             for item in remaining_pm:
-                if st.button(f"⬜ {item}", key=f"btn_pm_{item}", use_container_width=True):
-                    show_confirm_dialog(item)
+                if st.button(f"⬜ {item}", key=f"btn_pm_{item}", use_container_width=True, disabled=disabled_flag):
+                    st.session_state.confirming_task = item
+                    st.rerun()
 
-# --- 6. ユーザー選択（ログイン）画面 ---
-def login_screen():
-    inject_pwa_blocker()
-    st.title("🔑 ユーザー選択")
-    st.write("利用する担当者名を選択してください。")
-    
-    # スプレッドシートのメイン（gid=0）からユーザー一覧を取得
-    data_raw = load_sheet_data(gid="0")
-    if not data_raw or len(data_raw) < 2:
-        st.error("ユーザーデータの読み込みに失敗しました。")
-        return
-        
-    header = data_raw[0]
-    user_list = []
-    for row in data_raw[1:]:
-        if len(row) > 1 and row[1].strip():
-            user_list.append(row[1].strip())
-            
-    selected_name = st.selectbox("担当者名", user_list)
-    
-    if st.button("ログイン", type="primary", use_container_width=True):
-        # 選択されたユーザーの詳細情報を取得してセッションに保存
-        for row in data_raw[1:]:
-            if len(row) > 1 and row[1].strip() == selected_name:
-                user_dict = dict(zip(header, row))
-                st.session_state.user_name = selected_name
-                st.session_state.user_code = str(user_dict.get('コード', '')).split('.')[0]
-                st.session_state.user_role = str(user_dict.get('権限', '3')).split('.')[0]
-                st.session_state.show_timecard = False
-                st.session_state.show_menu = False
-                
-                # ブラウザ保存
-                set_login_storage(
-                    st.session_state.user_name,
-                    user_dict.get('個別URL', ''),
-                    str(user_dict.get('要確認フラグ', '0')),
-                    st.session_state.user_role,
-                    st.session_state.user_code
-                )
-                st.rerun()
-
-# --- 7. メイン画面 ---
+# --- 6. メイン画面 ---
 def main_screen():
     inject_pwa_blocker() 
 
@@ -493,23 +450,16 @@ def main_screen():
         vals = list(current_user_data.values())
         st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", "", "None"])
 
-    # 右上：名前表示ボタン
+    # 👤 名前表示（タップでタイムカードエリアのトグルを復元）
     st.markdown('<div class="user-label-btn">', unsafe_allow_html=True)
-    if st.button(f"👤 {st.session_state.user_name} さん", key="menu_toggle"):
-        st.session_state.show_menu = not st.session_state.get('show_menu', False)
+    if st.button(f"👤 {st.session_state.user_name} さん", key="hidden_toggle"):
         if st.session_state.user_role != "0":
-            st.session_state.show_timecard = st.session_state.show_menu
+            st.session_state.show_timecard = not st.session_state.get('show_timecard', False)
     st.markdown('</div>', unsafe_allow_html=True)
-
-    # 名前のクリック時に開く拡張メニュー（ログアウトなど）
-    if st.session_state.get('show_menu', False):
-        m_col1, m_col2 = st.columns([2, 1])
-        with m_col2:
-            if st.button("🚪 ログアウト", type="secondary", use_container_width=True):
-                clear_login_storage()
 
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
 
+    # 🔔 お知らせ枠
     announcement = data[0].get('お知らせ', '安全運転でお願いします')
     st.markdown(f'''
         <div style="background-color:#fffbe6; border:2px solid #ffe58f; padding:10px; border-radius:10px; display:flex; align-items:center; margin-top: 5px;">
@@ -521,6 +471,7 @@ def main_screen():
     if st.session_state.user_role == "0":
         st.session_state.show_timecard = True
 
+    # 🕒 タイムカードエリア（復元）
     if st.session_state.user_role != "3" and st.session_state.get('show_timecard', False):
         st.write("")
         st.write("### 🕒 勤怠・所在打刻")
@@ -536,6 +487,7 @@ def main_screen():
                 submit_attendance_direct("退社")
         st.write("---")
 
+    # --- 📅 「次回訪問日」＆「本日の予定」 ---
     if st.session_state.user_role != "3":
         visit_info, today_sched = get_visit_schedule_data(st.session_state.get('user_code', ''))
         w1_disp = visit_info.get("1W", {}).get("display", "--/--")
@@ -573,6 +525,7 @@ def main_screen():
                 </div>
             ''', unsafe_allow_html=True)
 
+    # 🛠️ 管理者エリア（権限「0」または「1」）
     if st.session_state.user_role in ["0", "1"]:
         check_sheet_rows = load_sheet_data(gid="1552856942")
         check_alert = False
@@ -607,33 +560,120 @@ def main_screen():
                 <div class="admin-box">
                     <a href="{sponge_url}" target="_blank" style="text-decoration:none; color:black;">
                         {sponge_btn}
-                        <p class="btn-text" style="margin-top: 12px;">スポンジ管理<br>表</p>
+                        <p class="btn-text" style="margin-top: 12px;">スポンジ<br>キャンペーンチェック</p>
                     </a>
                 </div>
             ''', unsafe_allow_html=True)
+        if alert_rows:
+            st.write("")
+            st.markdown('<span class="alert-text">⚠️ メンテナンス未処理</span>', unsafe_allow_html=True)
+            opts = [f"{r['name']} さん" for r in alert_rows]
+            sel = st.selectbox("対象を選択", opts, label_visibility="collapsed")
+            st.link_button(f"👉 確認を開く", alert_rows[opts.index(sel)]['url'], use_container_width=True)
 
-    # 業務チェックリストを表示
-    render_daily_checklist()
+    # 🔘 メインボタン 4つ（権限3以外）
+    if st.session_state.user_role != "3":
+        b1 = get_img_html("3.png", "📄")
+        b2 = get_img_html("4.png", "📋", alert=st.session_state.needs_alert)
+        b4 = get_img_html("5.png", "🧽")
+        b5 = get_img_html("image_d3349a.png", "🎓")
 
-# --- アプリの起動 ---
-if __name__ == "__main__":
-    # 1. ローカルストレージ（自動ログイン）のチェックを試みる
-    local_name = st_javascript("localStorage.getItem('shuttle_user_name');")
-    local_role = st_javascript("localStorage.getItem('shuttle_user_role');")
-    local_code = st_javascript("localStorage.getItem('shuttle_user_code');")
-    
-    if 'user_name' not in st.session_state:
-        if local_name and local_role:
-            # 端末の過去のログイン情報を引き継ぐ
-            st.session_state.user_name = str(local_name)
-            st.session_state.user_role = str(local_role)
-            st.session_state.user_code = str(local_code) if local_code else ""
+        grid_html = f'''
+            <div class="button-grid">
+                <a class="btn-item" href="https://docs.google.com/forms/d/e/1FAIpQLSc4E3L_UJkVxMMSTOYgcw3SJyoBixHoJfhe0WC-x1wbK6lsHw/viewform?usp=sharing" target="_blank">{b1}<p class="btn-text" style="margin-top:6px;">メンテナンス<br>入力</p></a>
+                <a class="btn-item" href="{st.session_state.user_url}" target="_blank">{b2}<p class="btn-text" style="margin-top:6px;">メンテナンス<br>確認</p></a>
+                <a class="btn-item" href="https://docs.google.com/forms/d/1t_3QDu1sOFXdBvwRzIuwdI1yT0Ez_AunIEXKz_Bds3c/edit#responses" target="_blank">{b4}<p class="btn-text" style="margin-top:6px;">スポンジ<br>キャンペーン入力</p></a>
+                <a class="btn-item" href="https://drive.google.com/drive/folders/1vZE__7Th8RuVtkNQpG-rAZSBtAvG7cTX" target="_blank">{b5}<p class="btn-text" style="margin-top:6px;">勉強会<br>資料</p></a>
+            </div>
+        '''
+        st.markdown(grid_html, unsafe_allow_html=True)
+
+    # 🌟 メンテナンス管理メニュー（権限「0」または「3」で見れる人全員にリンク）
+    if st.session_state.user_role in ["0", "3"]:
+        st.write("---")
+        st.write("### 🛠️ メンテナンス管理メニュー (権限3機能)")
+
+        url_sheet1 = "https://docs.google.com/spreadsheets/d/16JhXHMdYPoOIQmPBgd2sVclYkdYip6arRHtr86hr9hg/export?format=csv&gid=1365103622"
+        url_sheet2 = "https://docs.google.com/spreadsheets/d/1DShHig4iOhNXOkxMfALTRhyH0P5dtVpdBkNXvVQPC3g/export?format=csv&gid=1365103622"
+        url_sheet3 = "https://docs.google.com/spreadsheets/d/1kk9vFlE6LiBDMp6B4phUtnGs8CZfV8uhgkS-atdbBG0/export?format=csv&gid=1365103622"
+
+        rows1 = load_sheet_data(custom_url=url_sheet1)
+        rows2 = load_sheet_data(custom_url=url_sheet2)
+        rows3 = load_sheet_data(custom_url=url_sheet3)
+
+        alert1 = rows1 and len(rows1) >= 2 and any(cell.strip() != "" for cell in rows1[1][:15])
+        alert2 = rows2 and len(rows2) >= 2 and any(cell.strip() != "" for cell in rows2[1][:15])
+        alert3 = rows3 and len(rows3) >= 2 and any(cell.strip() != "" for cell in rows3[1][:15])
+
+        if alert1 or alert2 or alert3:
+            st.markdown('<span class="alert-text">⚠️ 管理メニューに未処理のデータがあります</span>', unsafe_allow_html=True)
+
+        btn_img1 = get_img_html("3.png", "⚙️", alert=alert1, width="85px")
+        btn_img2 = get_img_html("8.png", "🔍", alert=alert2, width="85px")
+        btn_img3 = get_img_html("4.png", "𖖨️", alert=alert3, width="85px")
+
+        grid_html_3 = f'''
+            <div class="button-grid-3">
+                <a class="btn-item" href="https://docs.google.com/spreadsheets/d/16JhXHMdYPoOIQmPBgd2sVclYkdYip6arRHtr86hr9hg/edit?gid=1365103622#gid=1365103622" target="_blank">
+                    {btn_img1}<p class="btn-text" style="margin-top:8px;">1. メンテナンス処理</p>
+                </a>
+                <a class="btn-item" href="https://docs.google.com/spreadsheets/d/1DShHig4iOhNXOkxMfALTRhyH0P5dtVpdBkNXvVQPC3g/edit?gid=1365103622#gid=1365103622" target="_blank">
+                    {btn_img2}<p class="btn-text" style="margin-top:8px;">2. メンテナンスチェック</p>
+                </a>
+                <a class="btn-item" href="https://docs.google.com/spreadsheets/d/1kk9vFlE6LiBDMp6B4phUtnGs8CZfV8uhgkS-atdbBG0/edit?gid=1365103622#gid=1365103622" target="_blank">
+                    {btn_img3}<p class="btn-text" style="margin-top:8px;">3. 印刷用</p>
+                </a>
+            </div>
+        '''
+        st.markdown(grid_html_3, unsafe_allow_html=True)
+        
+        # 📅 新シート（gid=1054767407）連動版チェックリストを表示
+        render_daily_checklist()
+
+    st.write("---")
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if os.path.exists("6.png"): st.image("6.png", width=110)
+    with col2:
+        if st.button("🚪 ログアウト", use_container_width=True):
+            st_javascript("localStorage.clear();")
+            st.session_state.login_status = False
+            st.session_state.logout_requested = True
             st.session_state.show_timecard = False
-            st.session_state.show_menu = False
-            main_screen()
+            st.rerun()
+
+# --- 7. 実行ロジック ---
+if 'login_status' not in st.session_state: st.session_state.login_status = False
+if 'logout_requested' not in st.session_state: st.session_state.logout_requested = False
+
+if st.session_state.login_status:
+    main_screen()
+else:
+    inject_pwa_blocker() 
+    if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
+    u_code = st.text_input("担当者コード").strip()
+    u_pass = st.text_input("パスワード", type="password").strip()
+    
+    if st.button("ログイン", type="primary", use_container_width=True):
+        raw = load_sheet_data(gid="0")
+        if raw:
+            h = raw[0]
+            rows = [dict(zip(h, r)) for r in raw[1:]]
+            user = next((r for r in rows if str(r.get('担当者コード')).strip() == u_code and str(r.get('パスワード')).strip() == u_pass), None)
+            
+            if user:
+                vals = list(user.values())
+                st.session_state.user_name = user.get('担当者名')
+                st.session_state.user_url = user.get('URL')
+                st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", ""])
+                st.session_state.user_role = str(vals[6]).strip() if len(vals) >= 7 else "2"
+                st.session_state.user_code = u_code
+                st.session_state.login_status = True
+                st.session_state.logout_requested = False
+                
+                set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role, st.session_state.user_code)
+                st.rerun()
+            else:
+                st.error("認証失敗")
         else:
-            # ログイン情報がない場合はユーザー選択（ログイン画面）を表示
-            login_screen()
-    else:
-        # すでにログインセッションがある場合はメイン画面を表示
-        main_screen()
+            st.error("マスターデータの読み込みに失敗しました")
