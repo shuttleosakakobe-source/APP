@@ -147,7 +147,7 @@ def get_visit_schedule_data(user_code):
             
     w2_obj = None
     for sched in all_schedules:
-        if sched["date"] >= today and sched["type"] == w2_target:
+        if sched["date"] >= today && sched["type"] == w2_target:
             w2_obj = sched
             visit_dates["2W"] = {"display": get_disp_str(sched)}
             break
@@ -555,12 +555,8 @@ def main_screen():
 
 # --- アプリの起動 ---
 if __name__ == "__main__":
-    # セッションステートの初期化（未ログイン状態の安全策）
+    # 未ログイン（セッションが空）の場合のエラーを防ぐための初期値設定
     if 'user_name' not in st.session_state:
-        st.session_state.user_name = "ゲスト"
-        st.session_state.user_role = "3"
-        st.session_state.user_code = ""
-        st.session_state.show_timecard = False
-        st.session_state.needs_alert = False
-    
-    main_screen()
+        st.warning("👤 ログイン、またはユーザー選択を行ってください。")
+    else:
+        main_screen()
