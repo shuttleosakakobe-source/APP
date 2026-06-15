@@ -185,18 +185,26 @@ def get_visit_schedule_data(user_code):
 
     return visit_dates, today_schedule
 
+# --- ⚡ [高速化・最適化] 画像のBase64エンコードをキャッシュ化 ---
+@st.cache_data
+def _get_base64_img(file_name):
+    if os.path.exists(file_name):
+        with open(file_name, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    return None
+
 # --- 3. 画像をHTML化する関数 ---
 def get_img_html(file_name, emoji, alert=False, width="100%"):
     border = "5px solid red" if alert else "5px solid transparent"
     shadow = "box-shadow: 0 0 15px red; filter: drop-shadow(0 0 5px red);" if alert else ""
-    if os.path.exists(file_name):
-        with open(file_name, "rb") as f:
-            data = base64.b64encode(f.read()).decode()
+    
+    data = _get_base64_img(file_name)
+    if data:
         img_code = f'data:image/png;base64,{data}'
         return f'<img src="{img_code}" style="width:{width}; aspect-ratio:1/1; object-fit:contain; border-radius:15px; border:{border}; {shadow}; display: block; margin: 0 auto;">'
     return f'<div style="width:{width}; aspect-ratio:1/1; background:#f0f2f6; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:40px; border:{border}; {shadow}; margin: 0 auto;">{emoji}</div>'
 
-# --- 4. 🔑 ログイン維持用関数（sessionStorageへ切り替え、再読み込みでクリアされる） ---
+# --- 4. 🔑 ログイン維持用関数 ---
 def set_login_storage(name, url, alert, role, code):
     from streamlit_javascript import st_javascript 
     st_javascript(f"sessionStorage.setItem('shuttle_user_name', '{name}');")
@@ -220,10 +228,8 @@ def process_logout():
 
 # --- 5. 強制アイコン＆ダウンロードブロック関数 ---
 def inject_pwa_blocker():
-    if os.path.exists("icon.png"):
-        with open("icon.png", "rb") as f:
-            icon_data = base64.b64encode(f.read()).decode()
-        
+    icon_data = _get_base64_img("icon.png")
+    if icon_data:
         block_html = f'''
             <script>
                 const links = parent.document.getElementsByTagName("link");
@@ -462,6 +468,7 @@ def main_screen():
         </style>
     """, unsafe_allow_html=True)
 
+    # ⚡ [高速化・最適化] gid="0" のデータをここで1度だけ取得・加工する（重複読み込みの排除）
     data_raw = load_sheet_data(gid="0")
     header = data_raw[0]
     data = [dict(zip(header, row)) for row in data_raw[1:]]
@@ -662,13 +669,12 @@ def main_screen():
 
     if os.path.exists("6.png"): st.image("6.png", width=110)
 
-# --- 7. 実行ロジック（🔒 sessionStorage の読み込みに変更） ---
+# --- 7. 実行ロジック ---
 if 'login_status' not in st.session_state: st.session_state.login_status = False
 if 'logout_requested' not in st.session_state: st.session_state.logout_requested = False
 
 if not st.session_state.login_status and not st.session_state.logout_requested:
     from streamlit_javascript import st_javascript 
-    # sessionStorage から値を取得するように変更（リロードするとこれらの値がブラウザ側で自動的に消去されます）
     local_name = st_javascript("sessionStorage.getItem('shuttle_user_name');")
     local_role = st_javascript("sessionStorage.getItem('shuttle_user_role');")
     local_code = st_javascript("sessionStorage.getItem('shuttle_user_code');")
@@ -706,7 +712,6 @@ else:
                 st.session_state.login_status = True
                 st.session_state.logout_requested = False
                 
-                # 情報を保持
                 set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role, st.session_state.user_code)
                 st.rerun()
             else:
