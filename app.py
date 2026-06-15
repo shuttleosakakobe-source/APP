@@ -196,19 +196,20 @@ def get_img_html(file_name, emoji, alert=False, width="100%"):
         return f'<img src="{img_code}" style="width:{width}; aspect-ratio:1/1; object-fit:contain; border-radius:15px; border:{border}; {shadow}; display: block; margin: 0 auto;">'
     return f'<div style="width:{width}; aspect-ratio:1/1; background:#f0f2f6; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:40px; border:{border}; {shadow}; margin: 0 auto;">{emoji}</div>'
 
-# --- 4. ログイン維持用関数 ---
+# --- 4. 🔑 ログイン維持用関数（sessionStorageへ切り替え、再読み込みでクリアされる） ---
 def set_login_storage(name, url, alert, role, code):
     from streamlit_javascript import st_javascript 
-    st_javascript(f"localStorage.setItem('shuttle_user_name', '{name}');")
-    st_javascript(f"localStorage.setItem('shuttle_user_url', '{url}');")
-    st_javascript(f"localStorage.setItem('shuttle_needs_alert', '{alert}');")
-    st_javascript(f"localStorage.setItem('shuttle_user_role', '{role}');")
-    st_javascript(f"localStorage.setItem('shuttle_user_code', '{code}');")
+    st_javascript(f"sessionStorage.setItem('shuttle_user_name', '{name}');")
+    st_javascript(f"sessionStorage.setItem('shuttle_user_url', '{url}');")
+    st_javascript(f"sessionStorage.setItem('shuttle_needs_alert', '{alert}');")
+    st_javascript(f"sessionStorage.setItem('shuttle_user_role', '{role}');")
+    st_javascript(f"sessionStorage.setItem('shuttle_user_code', '{code}');")
 
 # --- 🔄 ログアウト処理関数 ---
 def process_logout():
     from streamlit_javascript import st_javascript 
-    st_javascript("localStorage.clear();")
+    st_javascript("sessionStorage.clear();")
+    st_javascript("localStorage.clear();")  # 過去の古いログインキャッシュも念のため全消去
     st.session_state.login_status = False
     st.session_state.logout_requested = True
     st.session_state.show_timecard = False
@@ -265,17 +266,17 @@ def post_to_gas(payload):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# --- ⚡ 確認ダイアログ（業務チェックリスト用） ---
+# --- ⚡ 確認ダイアログ ---
 @st.dialog("⚠️ 業務完了の確認")
 def confirm_task_dialog(task_name):
     st.write(f"**「{task_name}」** を完了にしますか？")
-    st.caption("「業務チェックリスト」シートにリアルタイム反映され、画面から非表示になります。")
+    st.caption("「業務チェックリスト」シートに反映され、画面から非表示になります。")
     st.write("")
     
     col1, col2 = st.columns(2)
     with col1:
         if st.button("👍 はい（完了）", key="dlg_yes", type="primary", use_container_width=True):
-            with st.spinner("スプレッドシートに反映中..."):
+            with st.status("スプレッドシートに送信中...", expanded=True) as status:
                 res = post_to_gas({
                     "status": "COMPLETE_TASK",
                     "code": st.session_state.get('user_code', ''),
@@ -283,19 +284,28 @@ def confirm_task_dialog(task_name):
                     "task": task_name
                 })
                 if res.get("status") == "success":
-                    st.toast(f"✅ 「{task_name}」を記録しました！", icon="🎉")
+                    status.update(label="送信完了！画面を更新します...", state="complete")
+                    st.session_state["task_completed_trigger"] = task_name
                 else:
-                    st.error(f"❌ 失敗: {res.get('message', '通信エラー')}")
-            st.rerun()
+                    status.update(label=f"❌ 失敗: {res.get('message', '通信エラー')}", state="error")
+                    st.error("もう一度お試しいただくか、ネットワーク状況をご確認ください。")
+            
+            if "task_completed_trigger" in st.session_state:
+                st.rerun()
+
     with col2:
         if st.button("❌ キャンセル", key="dlg_no", use_container_width=True):
             st.rerun()
 
-# --- 🔄 【全員連動・10秒自動同期】チェックリスト専用コンポーネント ---
+# --- 🔄 チェックリスト専用コンポーネント ---
 @st.fragment(run_every=10)
 def render_daily_checklist():
     st.write("---")
     st.write("### 📅 業務チェックリスト")
+    
+    if "task_completed_trigger" in st.session_state:
+        done_task = st.session_state.pop("task_completed_trigger")
+        st.toast(f"✅ 「{done_task}」を記録しました！", icon="🎉")
     
     am_items = [
         "【データ抽出】 データ抽出 (38) ※※※代行手数料27%、32%と異なる実績抽出→検索",
@@ -304,7 +314,7 @@ def render_daily_checklist():
         "【実績管理】 実績送信 [700→734] (①→②表示しない → 全選択①→F1)",
         "【発注】 クローバー返却 [F1] (出力なし)",
         "【レンタルサービス準備】 出庫表・ピッキングリスト [300→333] (①→出庫表[翌日日付] / ②→ピッキング表[発注済最終日付])",
-        "【帳票出力】 1400→ (1.日次→Ent→Ent→1印刷 / 1.出庫表 / 1.ピッキング表[店舗合計] / 1.ピッキング表→F1)",
+        "【帳票出力】 1400→ (1.日次→Ent→Ent→1印刷 / 1.出庫表 / 1.ピッキング表 [店舗合計] / 1.ピッキング表→F1)",
         "【発注状況一覧照会】 TAN1D引当数 [400→411] (③売切商品→出庫予定日[発注済最終日付] → 商品[TAN1D]→F1→F7印刷)",
         "【入出庫・在庫管理】 担当者別出庫 [500→511] (1.全て選択→F1 ※紙は出ない)",
         "【棚卸調査票】 [500→582] (1：日時→2：RFDIアプリ →F1印刷)",
@@ -349,7 +359,7 @@ def render_daily_checklist():
 def main_screen():
     inject_pwa_blocker() 
 
-    # 🎨 CSSスタイル（ポップアップとトーストの超高速化設定を追加）
+    # 🎨 CSSスタイル
     st.markdown("""
         <style>
         header {visibility: hidden; height: 0px !important;}
@@ -423,7 +433,6 @@ def main_screen():
         .today-title { font-size: 12px; font-weight: bold; color: #0056b3; }
         .today-val { font-size: 14px; font-weight: bold; color: #cd1212; }
         
-        /* ボタン自体のレイアウト設定 */
         div.stButton > button {
             width: 100% !important;
             height: auto !important;
@@ -436,7 +445,6 @@ def main_screen():
             justify-content: flex-start !important; 
         }
         
-        /* ボタンの中にあるテキスト（pタグ） */
         div.stButton > button p {
             text-align: left !important;
             width: 100% !important;
@@ -447,21 +455,10 @@ def main_screen():
             padding: 0 !important;
         }
 
-        /* 🛠️ 【新規追加】確認ポップアップ（ダイアログ）の表示アニメーションをゼロ秒（最速）に上書き */
-        div[data-testid="stModal"] {
-            transition: none !important;
-            animation: none !important;
-        }
-        div[role="dialog"] {
-            transition: none !important;
-            animation: none !important;
-        }
-
-        /* 🛠️ 【新規追加】トースト通知（画面右下）の出現・消失スピードをゼロ秒に上書き */
-        div[data-testid="stToast"] {
-            transition: none !important;
-            animation: none !important;
-        }
+        /* アニメーション最速化 */
+        div[data-testid="stModal"] { transition: none !important; animation: none !important; }
+        div[role="dialog"] { transition: none !important; animation: none !important; }
+        div[data-testid="stToast"] { transition: none !important; animation: none !important; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -528,7 +525,7 @@ def main_screen():
         w4_disp = visit_info.get("4W", {}).get("display", "--/--")
         w8_disp = visit_info.get("8W", {}).get("display", "--/--")
         
-        today_str = get_with_today = get_focused_day = get_focused_day = get_jst_today().strftime('%m/%d')
+        today_str = get_jst_today().strftime('%m/%d')
         hide_keywords = ["勉強会", "空き日", "休", "チーフ出勤"]
         should_hide = any(kw in today_sched for kw in hide_keywords)
 
@@ -665,16 +662,17 @@ def main_screen():
 
     if os.path.exists("6.png"): st.image("6.png", width=110)
 
-# --- 7. 実行ロジック ---
+# --- 7. 実行ロジック（🔒 sessionStorage の読み込みに変更） ---
 if 'login_status' not in st.session_state: st.session_state.login_status = False
 if 'logout_requested' not in st.session_state: st.session_state.logout_requested = False
 
 if not st.session_state.login_status and not st.session_state.logout_requested:
     from streamlit_javascript import st_javascript 
-    local_name = st_javascript("localStorage.getItem('shuttle_user_name');")
-    local_role = st_javascript("localStorage.getItem('shuttle_user_role');")
-    local_code = st_javascript("localStorage.getItem('shuttle_user_code');")
-    local_url = st_javascript("localStorage.getItem('shuttle_user_url');")
+    # sessionStorage から値を取得するように変更（リロードするとこれらの値がブラウザ側で自動的に消去されます）
+    local_name = st_javascript("sessionStorage.getItem('shuttle_user_name');")
+    local_role = st_javascript("sessionStorage.getItem('shuttle_user_role');")
+    local_code = st_javascript("sessionStorage.getItem('shuttle_user_code');")
+    local_url = st_javascript("sessionStorage.getItem('shuttle_user_url');")
     
     if local_name and local_role and local_code:
         st.session_state.user_name = str(local_name)
@@ -708,6 +706,7 @@ else:
                 st.session_state.login_status = True
                 st.session_state.logout_requested = False
                 
+                # 情報を保持
                 set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role, st.session_state.user_code)
                 st.rerun()
             else:
