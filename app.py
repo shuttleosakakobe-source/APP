@@ -20,7 +20,7 @@ def get_jst_today():
     jst = timezone(timedelta(hours=9))
     return datetime.now(jst).date()
 
-# --- ⚠️ 最新のGASウェブアプリURLに差し替えてください ---
+# --- ⚠️ 最新のGASウェブアプリURL ---
 GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwXTkozCJtmqOesFI-aIxlcwn1B0INVkBTpOKC6I5-gkI9geY-J-RdziP-WAq7wYkN8/exec"
 
 # --- 2. スプレッドシート取得関数 ---
@@ -41,6 +41,14 @@ def load_sheet_data(gid="0", custom_url=None):
         return list(reader)
     except:
         return None
+
+# 💡 高速化：業務チェックリストの読み込みを10秒間キャッシュしてポップアップの起動を最速にする関数
+@st.cache_data(ttl=10)
+def fetch_checklist_from_gas(today_str):
+    return post_to_gas({
+        "status": "GET_CHECKLIST",
+        "date": today_str
+    })
 
 # --- 日付解析関数 ---
 def parse_flexible_date(date_str):
@@ -259,40 +267,62 @@ def post_to_gas(payload):
         headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
     )
     try:
-        with urllib.request.urlopen(req, timeout=10) as response:
-            return json.loads(response.read().decode('utf-8'))
+        with urllib.request.urlopen(req, timeout=12) as response:
+            res_text = response.read().decode('utf-8')
+            # 💡 通信結果が空っぽや壊れた文字でないか厳密にチェックしてエラーを未然に防ぐ
+            if res_text.strip():
+                return json.loads(res_text)
+            else:
+                return {"status": "error", "message": "空のレスポンスが返されました"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# --- ⚡ 確認ダイアログ ---
+# --- ⚡ 改良版：高速・連打ロック付き確認ダイアログ ---
 @st.dialog("⚠️ 業務完了の確認")
 def confirm_task_dialog(task_name):
     st.write(f"**「{task_name}」** を完了にしますか？")
     st.caption("「業務チェックリスト」シートに反映され、画面から非表示になります。")
     st.write("")
     
+    # 二重送信を防ぐためのセッション管理
+    if "is_processing" not in st.session_state:
+        st.session_state.is_processing = False
+
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("👍 はい（完了）", key="dlg_yes", type="primary", use_container_width=True):
-            with st.status("スプレッドシートに送信中...", expanded=True) as status:
-                res = post_to_gas({
-                    "status": "COMPLETE_TASK",
-                    "code": st.session_state.get('user_code', ''),
-                    "name": st.session_state.get('user_name', ''),
-                    "task": task_name
-                })
-                if res.get("status") == "success":
-                    status.update(label="送信完了！画面を更新します...", state="complete")
-                    st.session_state["task_completed_trigger"] = task_name
-                else:
-                    status.update(label=f"❌ 失敗: {res.get('message', '通信エラー')}", state="error")
-                    st.error("もう一度お試しいただくか、ネットワーク状況をご確認ください。")
-            
-            if "task_completed_trigger" in st.session_state:
+        # 💡 ボタンが押されたら即座に「通信中...」にしてクリックを完全ロック
+        if st.session_state.is_processing:
+            st.button("⏳ 処理中...", type="primary", disabled=True, use_container_width=True)
+        else:
+            if st.button("👍 はい（完了）", key="dlg_yes", type="primary", use_container_width=True):
+                st.session_state.is_processing = True
                 st.rerun()
 
     with col2:
-        if st.button("❌ キャンセル", key="dlg_no", use_container_width=True):
+        if st.button("❌ キャンセル", key="dlg_no", use_container_width=True, disabled=st.session_state.is_processing):
+            st.session_state.is_processing = False
+            st.rerun()
+
+    # 実際の送信処理（「はい」が押された後のリランで実行）
+    if st.session_state.is_processing:
+        with st.status("スプレッドシートに送信中...", expanded=True) as status:
+            res = post_to_gas({
+                "status": "COMPLETE_TASK",
+                "code": st.session_state.get('user_code', ''),
+                "name": st.session_state.get('user_name', ''),
+                "task": task_name
+            })
+            if res.get("status") == "success":
+                status.update(label="送信完了！画面を更新します...", state="complete")
+                st.session_state["task_completed_trigger"] = task_name
+                # キャッシュをクリアして即座に最新データを取得できるようにする
+                st.cache_data.clear()
+            else:
+                status.update(label=f"❌ 失敗: {res.get('message', '通信エラー')}", state="error")
+                st.error("もう一度お試しいただくか、ネットワーク状況をご確認ください。")
+        
+        st.session_state.is_processing = False
+        if "task_completed_trigger" in st.session_state:
             st.rerun()
 
 # --- 🔄 チェックリスト専用コンポーネント ---
@@ -327,10 +357,8 @@ def render_daily_checklist():
         "【**メンテチェック終了後**】 追加発注 [400→422] ①→Ｆ１ 【あればその都度】"
     ]
     
-    res = post_to_gas({
-        "status": "GET_CHECKLIST",
-        "date": get_jst_today().strftime("%Y-%m-%d")
-    })
+    # 💡 10秒間キャッシュされたデータを利用し、ボタン開閉時のもたつきを解消
+    res = fetch_checklist_from_gas(get_jst_today().strftime("%Y-%m-%d"))
     completed_tasks = set(res.get("completed", [])) if res.get("status") == "success" else set()
     
     tab_am, tab_pm = st.tabs(["🌅 AM（日次更新前必・メンテ終了後）", "🌇 PM（メンテチェック終了後）"])
