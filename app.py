@@ -21,7 +21,7 @@ def get_jst_today():
     return datetime.now(jst).date()
 
 # --- ⚠️ 最新のGASウェブアプリURL ---
-GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwXTkozCJtmqOesFI-aIxlcwn1B0INVkBTpOKC6I5-gkI9geY-J-RdziP-WAq7wYkN8/exec"
+GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycby3UDD4l-gO3Pfs4fOgiXaUhqKMfRpiJ7ipo3UKy1yDU9FnkTxPKQyVrlxCY-GZjRZZ/exec"
 
 # --- 2. スプレッドシート取得関数 ---
 @st.cache_data(ttl=0)
@@ -41,14 +41,6 @@ def load_sheet_data(gid="0", custom_url=None):
         return list(reader)
     except:
         return None
-
-# 💡 高速化：業務チェックリストの読み込みを10秒間キャッシュしてポップアップの起動を最速にする関数
-@st.cache_data(ttl=10)
-def fetch_checklist_from_gas(today_str):
-    return post_to_gas({
-        "status": "GET_CHECKLIST",
-        "date": today_str
-    })
 
 # --- 日付解析関数 ---
 def parse_flexible_date(date_str):
@@ -220,7 +212,7 @@ def process_logout():
     st.session_state.login_status = False
     st.session_state.logout_requested = True
     st.session_state.show_timecard = False
-    for k in ['user_name', 'user_code', 'user_role', 'user_url', 'needs_alert']:
+    for k in ['user_name', 'user_code', 'user_role', 'user_url', 'needs_alert', 'local_completed_tasks']:
         if k in st.session_state: del st.session_state[k]
     st.rerun()
 
@@ -269,7 +261,6 @@ def post_to_gas(payload):
     try:
         with urllib.request.urlopen(req, timeout=12) as response:
             res_text = response.read().decode('utf-8')
-            # 💡 通信結果が空っぽや壊れた文字でないか厳密にチェックしてエラーを未然に防ぐ
             if res_text.strip():
                 return json.loads(res_text)
             else:
@@ -277,20 +268,25 @@ def post_to_gas(payload):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# --- ⚡ 改良版：高速・連打ロック付き確認ダイアログ ---
+# 💡 業務チェックリストの読み込み関数（ボタン操作時の遅延をなくすためセッションに一時退避する仕組みへ統合）
+def fetch_checklist_from_gas(today_str):
+    return post_to_gas({
+        "status": "GET_CHECKLIST",
+        "date": today_str
+    })
+
+# --- 🔑 高速・連打ロック付き確認ダイアログ ---
 @st.dialog("⚠️ 業務完了の確認")
 def confirm_task_dialog(task_name):
     st.write(f"**「{task_name}」** を完了にしますか？")
     st.caption("「業務チェックリスト」シートに反映され、画面から非表示になります。")
     st.write("")
     
-    # 二重送信を防ぐためのセッション管理
     if "is_processing" not in st.session_state:
         st.session_state.is_processing = False
 
     col1, col2 = st.columns(2)
     with col1:
-        # 💡 ボタンが押されたら即座に「通信中...」にしてクリックを完全ロック
         if st.session_state.is_processing:
             st.button("⏳ 処理中...", type="primary", disabled=True, use_container_width=True)
         else:
@@ -303,7 +299,6 @@ def confirm_task_dialog(task_name):
             st.session_state.is_processing = False
             st.rerun()
 
-    # 実際の送信処理（「はい」が押された後のリランで実行）
     if st.session_state.is_processing:
         with st.status("スプレッドシートに送信中...", expanded=True) as status:
             res = post_to_gas({
@@ -314,8 +309,13 @@ def confirm_task_dialog(task_name):
             })
             if res.get("status") == "success":
                 status.update(label="送信完了！画面を更新します...", state="complete")
+                
+                # 💡【対策】完了したタスクを即座にローカルセッション状態に追加し、10秒キャッシュを無視して消す
+                if "local_completed_tasks" not in st.session_state:
+                    st.session_state.local_completed_tasks = set()
+                st.session_state.local_completed_tasks.add(task_name)
+                
                 st.session_state["task_completed_trigger"] = task_name
-                # キャッシュをクリアして即座に最新データを取得できるようにする
                 st.cache_data.clear()
             else:
                 status.update(label=f"❌ 失敗: {res.get('message', '通信エラー')}", state="error")
@@ -336,7 +336,7 @@ def render_daily_checklist():
         st.toast(f"✅ 「{done_task}」を記録しました！", icon="🎉")
     
     am_items = [
-        "【データ抽出】 データ抽出 (38) ※※※代行手数料27%、32%と異なる実績抽出→検索",
+        "【データ抽出】 データ抽出 (38) ※※※代行手数料27%、32%と異なる実績実績抽出→検索",
         "【実績管理】 日次確認 [700→790→78] (①→F1→F9 / ②→F1→F8)",
         "【実績管理】 日次締 [700→792] (①→入金合計のみ / ②→実績日と以降の休日分)",
         "【実績管理】 実績送信 [700→734] (①→②表示しない → 全選択①→F1)",
@@ -357,10 +357,14 @@ def render_daily_checklist():
         "【**メンテチェック終了後**】 追加発注 [400→422] ①→Ｆ１ 【あればその都度】"
     ]
     
-    # 💡 10秒間キャッシュされたデータを利用し、ボタン開閉時のもたつきを解消
+    # GASから現在の完了リストを取得
     res = fetch_checklist_from_gas(get_jst_today().strftime("%Y-%m-%d"))
     completed_tasks = set(res.get("completed", [])) if res.get("status") == "success" else set()
     
+    # 💡【解決策】ローカルセッションで保持している「さっき完了したタスク」をガッチャンコして確実に非表示化
+    if "local_completed_tasks" in st.session_state:
+        completed_tasks.update(st.session_state.local_completed_tasks)
+        
     tab_am, tab_pm = st.tabs(["🌅 AM（日次更新前必・メンテ終了後）", "🌇 PM（メンテチェック終了後）"])
 
     with tab_am:
@@ -488,7 +492,6 @@ def main_screen():
         </style>
     """, unsafe_allow_html=True)
 
-    # ⚡ 高速化：毎回スプレッドシート全体を回すのをやめ、ログイン時に確定したメモリ情報を優先利用
     data_raw = load_sheet_data(gid="0")
     header = data_raw[0]
     data = [dict(zip(header, row)) for row in data_raw[1:]]
@@ -643,7 +646,6 @@ def main_screen():
         '''
         st.markdown(grid_html, unsafe_allow_html=True)
 
-    # ⚡ 高速化：Role 0 または 3 の管理者以外は、以下の重いシート読み込み処理を完全にスキップ（Lazy Load）
     if st.session_state.user_role in ["0", "3"]:
         st.write("---")
         st.write("### 🛠️ メンテナンス管理メニュー")
@@ -694,7 +696,6 @@ def main_screen():
 if 'login_status' not in st.session_state: st.session_state.login_status = False
 if 'logout_requested' not in st.session_state: st.session_state.logout_requested = False
 
-# ⚡ 高速化：すでにPythonメモリ内にログイン情報がある場合は、遅いJavaScriptの読み込み(st_javascript)を完全にスキップ
 if not st.session_state.login_status and not st.session_state.logout_requested:
     from streamlit_javascript import st_javascript 
     local_name = st_javascript("sessionStorage.getItem('shuttle_user_name');")
@@ -734,10 +735,8 @@ else:
                 st.session_state.login_status = True
                 st.session_state.logout_requested = False
                 
-                # ⚡ 高速化：情報を保持させる時だけ、最低限JavaScriptを叩く
+                # ログイン情報をブラウザに保存
                 set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role, st.session_state.user_code)
                 st.rerun()
             else:
-                st.error("認証失敗")
-        else:
-            st.error("マスターデータの読み込みに失敗しました")
+                st.error("担当者コードまたはパスワードが正しくありません。")
