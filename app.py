@@ -62,14 +62,24 @@ if not st.session_state.login_status:
         st.session_state.user_url = str(local_url) if local_url else ""
         st.session_state.login_status = True
 
-# --- 自動ページ割り振り機能 ---
+# --- 自動ページ割り振り機能（修正版） ---
 if st.session_state.login_status:
     role = st.session_state.user_role
-    if role == "1": 
-        st.switch_page("pages/1_manager.py")
-    else: 
-        # 権限2（一般）およびその他のスタッフはすべてスタッフ画面へ
-        st.switch_page("pages/2_staff.py")
+    try:
+        if role == "0": 
+            st.switch_page("pages/0_admin.py")
+        elif role == "1": 
+            st.switch_page("pages/1_manager.py")
+        elif role == "3": 
+            st.switch_page("pages/3_maintenance.py")
+        else: 
+            st.switch_page("pages/2_staff.py")
+    except:
+        # 万が一、上のパスでエラーが出た場合のセーフティ（pagesなしで再トライ）
+        if role == "0": st.switch_page("0_admin.py")
+        elif role == "1": st.switch_page("1_manager.py")
+        elif role == "3": st.switch_page("3_maintenance.py")
+        else: st.switch_page("2_staff.py")
 else:
     # ログイン画面の表示
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
