@@ -6,8 +6,7 @@ import csv
 import io
 import json
 import re
-from datetime import datetime, timedelta
-from streamlit_javascript import st_javascript 
+from datetime import datetime, timedelta, timezone
 
 # --- 1. ページ設定 ---
 st.set_page_config(
@@ -15,6 +14,12 @@ st.set_page_config(
     page_icon="icon.png", 
     layout="centered"
 )
+
+# 💡 安全に日本時間(JST)を取得するためのヘルパー関数
+def get_jst_today():
+    # サーバー環境に依存せず、常に日本時間の今日の日付を返す
+    jst = timezone(timedelta(hours=9))
+    return datetime.now(jst).date()
 
 # --- ⚠️ 最新のGASウェブアプリURLに差し替えてください ---
 GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwHh3IFsieR8xL5PTTjS6id2slofK-cAVRPOwo0UljCATHHvYjBiXG_YJaNewAcyF-F/exec"
@@ -38,11 +43,13 @@ def load_sheet_data(gid="0", custom_url=None):
     except:
         return None
 
-# --- 日付解析関数 ---
+# --- 日付解析関数（修正完了） ---
 def parse_flexible_date(date_str):
     if not date_str:
         return None
     cleaned = str(date_str).strip().split(" ")[0]
+    
+    # パターン1: 2026年06月15日 形式
     match_jp = re.match(r'^(\d{4})年(\d{1,2})月(\d{1,2})日', cleaned)
     if match_jp:
         try:
@@ -50,11 +57,14 @@ def parse_flexible_date(date_str):
             return datetime(year, month, day).date()
         except:
             return None
+            
+    # パターン2: 2026/06/15 または 2026-06-15 形式
     cleaned = cleaned.replace("-", "/")
     match_slash = re.match(r'^(\d{4})/(\d{1,2})/(\d{1,2})', cleaned)
     if match_slash:
         try:
-            year, month, day = map(int, match_jp.groups())
+            # 🛠️ match_jp になっていたタイポを match_slash.groups() に修正しました
+            year, month, day = map(int, match_slash.groups())
             return datetime(year, month, day).date()
         except:
             return None
@@ -76,7 +86,7 @@ def get_visit_schedule_data(user_code):
             user_col_idx = idx
             break
             
-    if user_col_idx == -1:  # 🛠️ ここを「==」に修正いたしました
+    if user_col_idx == -1:
         try:
             target_int = int(float(user_code))
             for idx, col in enumerate(code_row):
@@ -92,7 +102,7 @@ def get_visit_schedule_data(user_code):
     if user_col_idx == -1:
         return {}, "未登録"
         
-    today = datetime.now().date()
+    today = get_jst_today() # 🛠️ 日本時間に安全固定
     today_schedule = "なし"
     all_schedules = []
     
@@ -192,6 +202,7 @@ def get_img_html(file_name, emoji, alert=False, width="100%"):
 
 # --- 4. ログイン維持用関数 ---
 def set_login_storage(name, url, alert, role, code):
+    from streamlit_javascript import st_javascript 
     st_javascript(f"localStorage.setItem('shuttle_user_name', '{name}');")
     st_javascript(f"localStorage.setItem('shuttle_user_url', '{url}');")
     st_javascript(f"localStorage.setItem('shuttle_needs_alert', '{alert}');")
@@ -200,6 +211,7 @@ def set_login_storage(name, url, alert, role, code):
 
 # --- 🔄 ログアウト処理関数 ---
 def process_logout():
+    from streamlit_javascript import st_javascript 
     st_javascript("localStorage.clear();")
     st.session_state.login_status = False
     st.session_state.logout_requested = True
@@ -311,9 +323,10 @@ def render_daily_checklist():
         "【**メンテチェック終了後**】 追加発注 [400→422] ①→Ｆ１ 【あればその都度】"
     ]
     
+    # 🛠️ 日本時間の今日の日付をフォーマットして送信
     res = post_to_gas({
         "status": "GET_CHECKLIST",
-        "date": datetime.now().strftime("%Y-%m-%d")
+        "date": get_jst_today().strftime("%Y-%m-%d")
     })
     completed_tasks = set(res.get("completed", [])) if res.get("status") == "success" else set()
     
@@ -415,7 +428,7 @@ def main_screen():
         .today-title { font-size: 12px; font-weight: bold; color: #0056b3; }
         .today-val { font-size: 14px; font-weight: bold; color: #cd1212; }
         
-        /* ボタン自体のレイアウト設定。幅100%にして、中身を左端に寄せる */
+        /* ボタン自体のレイアウト設定 */
         div.stButton > button {
             width: 100% !important;
             height: auto !important;
@@ -428,7 +441,7 @@ def main_screen():
             justify-content: flex-start !important; 
         }
         
-        /* ボタンの中にあるテキスト（pタグ）だけを完全にターゲットにして左詰め＋自動改行 */
+        /* ボタンの中にあるテキスト（pタグ） */
         div.stButton > button p {
             text-align: left !important;
             width: 100% !important;
@@ -504,7 +517,7 @@ def main_screen():
         w4_disp = visit_info.get("4W", {}).get("display", "--/--")
         w8_disp = visit_info.get("8W", {}).get("display", "--/--")
         
-        today_str = datetime.now().strftime('%m/%d')
+        today_str = get_with_today = get_focused_day = get_focused_day = get_jst_today().strftime('%m/%d')
         hide_keywords = ["勉強会", "空き日", "休", "チーフ出勤"]
         should_hide = any(kw in today_sched for kw in hide_keywords)
 
@@ -646,6 +659,7 @@ if 'login_status' not in st.session_state: st.session_state.login_status = False
 if 'logout_requested' not in st.session_state: st.session_state.logout_requested = False
 
 if not st.session_state.login_status and not st.session_state.logout_requested:
+    from streamlit_javascript import st_javascript 
     local_name = st_javascript("localStorage.getItem('shuttle_user_name');")
     local_role = st_javascript("localStorage.getItem('shuttle_user_role');")
     local_code = st_javascript("localStorage.getItem('shuttle_user_code');")
