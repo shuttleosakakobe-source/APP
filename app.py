@@ -196,7 +196,7 @@ def get_img_html(file_name, emoji, alert=False, width="100%"):
         return f'<img src="{img_code}" style="width:{width}; aspect-ratio:1/1; object-fit:contain; border-radius:15px; border:{border}; {shadow}; display: block; margin: 0 auto;">'
     return f'<div style="width:{width}; aspect-ratio:1/1; background:#f0f2f6; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:40px; border:{border}; {shadow}; margin: 0 auto;">{emoji}</div>'
 
-# --- 4. 🔑 ログイン維持用関数（sessionStorageへ切り替え、再読み込みでクリアされる） ---
+# --- 4. 🔑 ログイン維持用関数 ---
 def set_login_storage(name, url, alert, role, code):
     from streamlit_javascript import st_javascript 
     st_javascript(f"sessionStorage.setItem('shuttle_user_name', '{name}');")
@@ -208,14 +208,12 @@ def set_login_storage(name, url, alert, role, code):
 # --- 🔄 ログアウト処理関数 ---
 def process_logout():
     from streamlit_javascript import st_javascript 
-    st_javascript("sessionStorage.clear();")
-    st_javascript("localStorage.clear();")  # 過去の古いログインキャッシュも念のため全消去
+    st_javascript("sessionStorage.clear(); localStorage.clear();")
     st.session_state.login_status = False
     st.session_state.logout_requested = True
     st.session_state.show_timecard = False
-    if 'user_name' in st.session_state: del st.session_state.user_name
-    if 'user_code' in st.session_state: del st.session_state.user_code
-    if 'user_role' in st.session_state: del st.session_state.user_role
+    for k in ['user_name', 'user_code', 'user_role', 'user_url', 'needs_alert']:
+        if k in st.session_state: del st.session_state[k]
     st.rerun()
 
 # --- 5. 強制アイコン＆ダウンロードブロック関数 ---
@@ -462,6 +460,7 @@ def main_screen():
         </style>
     """, unsafe_allow_html=True)
 
+    # ⚡ 高速化：毎回スプレッドシート全体を回すのをやめ、ログイン時に確定したメモリ情報を優先利用
     data_raw = load_sheet_data(gid="0")
     header = data_raw[0]
     data = [dict(zip(header, row)) for row in data_raw[1:]]
@@ -616,6 +615,7 @@ def main_screen():
         '''
         st.markdown(grid_html, unsafe_allow_html=True)
 
+    # ⚡ 高速化：Role 0 または 3 の管理者以外は、以下の重いシート読み込み処理を完全にスキップ（Lazy Load）
     if st.session_state.user_role in ["0", "3"]:
         st.write("---")
         st.write("### 🛠️ メンテナンス管理メニュー")
@@ -662,13 +662,13 @@ def main_screen():
 
     if os.path.exists("6.png"): st.image("6.png", width=110)
 
-# --- 7. 実行ロジック（🔒 sessionStorage の読み込みに変更） ---
+# --- 7. 実行ロジック ---
 if 'login_status' not in st.session_state: st.session_state.login_status = False
 if 'logout_requested' not in st.session_state: st.session_state.logout_requested = False
 
+# ⚡ 高速化：すでにPythonメモリ内にログイン情報がある場合は、遅いJavaScriptの読み込み(st_javascript)を完全にスキップ
 if not st.session_state.login_status and not st.session_state.logout_requested:
     from streamlit_javascript import st_javascript 
-    # sessionStorage から値を取得するように変更（リロードするとこれらの値がブラウザ側で自動的に消去されます）
     local_name = st_javascript("sessionStorage.getItem('shuttle_user_name');")
     local_role = st_javascript("sessionStorage.getItem('shuttle_user_role');")
     local_code = st_javascript("sessionStorage.getItem('shuttle_user_code');")
@@ -706,7 +706,7 @@ else:
                 st.session_state.login_status = True
                 st.session_state.logout_requested = False
                 
-                # 情報を保持
+                # ⚡ 高速化：情報を保持させる時だけ、最低限JavaScriptを叩く
                 set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role, st.session_state.user_code)
                 st.rerun()
             else:
