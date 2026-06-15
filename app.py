@@ -21,7 +21,7 @@ def get_jst_today():
     return datetime.now(jst).date()
 
 # --- ⚠️ 最新のGASウェブアプリURLに差し替えてください ---
-GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwHh3IFsieR8xL5PTTjS6id2slofK-cAVRPOwo0UljCATHHvYjBiXG_YJaNewAcyF-F/exec"
+GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwXTkozCJtmqOesFI-aIxlcwn1B0INVkBTpOKC6I5-gkI9geY-J-RdziP-WAq7wYkN8/exec"
 
 # --- 2. スプレッドシート取得関数 ---
 @st.cache_data(ttl=0)
