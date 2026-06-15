@@ -17,7 +17,6 @@ st.set_page_config(
 
 # 💡 安全に日本時間(JST)を取得するためのヘルパー関数
 def get_jst_today():
-    # サーバー環境に依存せず、常に日本時間の今日の日付を返す
     jst = timezone(timedelta(hours=9))
     return datetime.now(jst).date()
 
@@ -43,13 +42,12 @@ def load_sheet_data(gid="0", custom_url=None):
     except:
         return None
 
-# --- 日付解析関数（修正完了） ---
+# --- 日付解析関数 ---
 def parse_flexible_date(date_str):
     if not date_str:
         return None
     cleaned = str(date_str).strip().split(" ")[0]
     
-    # パターン1: 2026年06月15日 形式
     match_jp = re.match(r'^(\d{4})年(\d{1,2})月(\d{1,2})日', cleaned)
     if match_jp:
         try:
@@ -58,12 +56,10 @@ def parse_flexible_date(date_str):
         except:
             return None
             
-    # パターン2: 2026/06/15 または 2026-06-15 形式
     cleaned = cleaned.replace("-", "/")
     match_slash = re.match(r'^(\d{4})/(\d{1,2})/(\d{1,2})', cleaned)
     if match_slash:
         try:
-            # 🛠️ match_jp になっていたタイポを match_slash.groups() に修正しました
             year, month, day = map(int, match_slash.groups())
             return datetime(year, month, day).date()
         except:
@@ -102,7 +98,7 @@ def get_visit_schedule_data(user_code):
     if user_col_idx == -1:
         return {}, "未登録"
         
-    today = get_jst_today() # 🛠️ 日本時間に安全固定
+    today = get_jst_today()
     today_schedule = "なし"
     all_schedules = []
     
@@ -323,7 +319,6 @@ def render_daily_checklist():
         "【**メンテチェック終了後**】 追加発注 [400→422] ①→Ｆ１ 【あればその都度】"
     ]
     
-    # 🛠️ 日本時間の今日の日付をフォーマットして送信
     res = post_to_gas({
         "status": "GET_CHECKLIST",
         "date": get_jst_today().strftime("%Y-%m-%d")
@@ -354,7 +349,7 @@ def render_daily_checklist():
 def main_screen():
     inject_pwa_blocker() 
 
-    # 🎨 CSSスタイル
+    # 🎨 CSSスタイル（ポップアップとトーストの超高速化設定を追加）
     st.markdown("""
         <style>
         header {visibility: hidden; height: 0px !important;}
@@ -450,6 +445,22 @@ def main_screen():
             word-break: break-all !important;
             margin: 0 !important;
             padding: 0 !important;
+        }
+
+        /* 🛠️ 【新規追加】確認ポップアップ（ダイアログ）の表示アニメーションをゼロ秒（最速）に上書き */
+        div[data-testid="stModal"] {
+            transition: none !important;
+            animation: none !important;
+        }
+        div[role="dialog"] {
+            transition: none !important;
+            animation: none !important;
+        }
+
+        /* 🛠️ 【新規追加】トースト通知（画面右下）の出現・消失スピードをゼロ秒に上書き */
+        div[data-testid="stToast"] {
+            transition: none !important;
+            animation: none !important;
         }
         </style>
     """, unsafe_allow_html=True)
