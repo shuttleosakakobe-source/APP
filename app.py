@@ -62,32 +62,26 @@ if not st.session_state.login_status:
         st.session_state.user_url = str(local_url) if local_url else ""
         st.session_state.login_status = True
 
-# --- 自動ページ割り振り機能（決定版） ---
+# --- 自動ページ割り振り機能（絶対エラー回避版） ---
 if st.session_state.login_status:
     role = st.session_state.user_role
     
-    # 割り振るファイル名を決定
+    # 遷移先のURLパスを決定（環境に合わせて変換）
     if role == "0":
-        page_file = "0_admin.py"
+        page_path = "0_admin"
     elif role == "1":
-        page_file = "1_manager.py"
+        page_path = "1_manager"
     elif role == "3":
-        page_file = "3_maintenance.py"
+        page_path = "3_maintenance"
     else:
-        page_file = "2_staff.py"
+        page_path = "2_staff"
         
-    # エラーが出ても画面が真っ赤にならないように安全に遷移をトライする
-    try:
-        # パターンA: pages/ を含めた正式な相対パスでトライ
-        st.switch_page(f"pages/{page_file}")
-    except Exception as e:
-        try:
-            # パターンB: ファイル名単体でトライ（環境によってはこちらが正解になるケースがあります）
-            st.switch_page(page_file)
-        except Exception as e2:
-            # 万が一、どちらも失敗した場合はエラー画面にせず、強制的に画面上に案内リンクを表示する
-            st.error("🔄 ページの切り替え準備中です。数秒待ってから以下のボタンを押してください。")
-            st.page_link(f"pages/{page_file}", label="👉 業務画面へ進む", use_container_width=True)
+    # JavaScriptを使って、画面を直接リダイレクト（引っ越し）させる
+    from streamlit_javascript import st_javascript
+    st_javascript(f"window.top.location.href = window.top.location.origin + '/{page_path}';")
+    
+    st.write("🔄 画面を切り替えています。しばらくお待ちください...")
+    
 else:
     # ログイン画面の表示
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
