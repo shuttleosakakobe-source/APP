@@ -62,24 +62,32 @@ if not st.session_state.login_status:
         st.session_state.user_url = str(local_url) if local_url else ""
         st.session_state.login_status = True
 
-# --- 自動ページ割り振り機能（修正版） ---
+# --- 自動ページ割り振り機能（決定版） ---
 if st.session_state.login_status:
     role = st.session_state.user_role
+    
+    # 割り振るファイル名を決定
+    if role == "0":
+        page_file = "0_admin.py"
+    elif role == "1":
+        page_file = "1_manager.py"
+    elif role == "3":
+        page_file = "3_maintenance.py"
+    else:
+        page_file = "2_staff.py"
+        
+    # エラーが出ても画面が真っ赤にならないように安全に遷移をトライする
     try:
-        if role == "0": 
-            st.switch_page("pages/0_admin.py")
-        elif role == "1": 
-            st.switch_page("pages/1_manager.py")
-        elif role == "3": 
-            st.switch_page("pages/3_maintenance.py")
-        else: 
-            st.switch_page("pages/2_staff.py")
-    except:
-        # 万が一、上のパスでエラーが出た場合のセーフティ（pagesなしで再トライ）
-        if role == "0": st.switch_page("0_admin.py")
-        elif role == "1": st.switch_page("1_manager.py")
-        elif role == "3": st.switch_page("3_maintenance.py")
-        else: st.switch_page("2_staff.py")
+        # パターンA: pages/ を含めた正式な相対パスでトライ
+        st.switch_page(f"pages/{page_file}")
+    except Exception as e:
+        try:
+            # パターンB: ファイル名単体でトライ（環境によってはこちらが正解になるケースがあります）
+            st.switch_page(page_file)
+        except Exception as e2:
+            # 万が一、どちらも失敗した場合はエラー画面にせず、強制的に画面上に案内リンクを表示する
+            st.error("🔄 ページの切り替え準備中です。数秒待ってから以下のボタンを押してください。")
+            st.page_link(f"pages/{page_file}", label="👉 業務画面へ進む", use_container_width=True)
 else:
     # ログイン画面の表示
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
