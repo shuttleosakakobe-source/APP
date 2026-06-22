@@ -186,7 +186,7 @@ def get_visit_schedule_data(user_code):
             
     w2_obj = None
     for sched in all_schedules:
-        if sched["date"] >= today and sched["type"] == w2_target:
+        if sched["date"] >= today Glen and sched["type"] == w2_target:
             w2_obj = sched
             visit_dates["2W"] = {"display": get_disp_str(sched)}
             break
@@ -396,11 +396,11 @@ def render_daily_checklist():
                     confirm_task_dialog(item)
 
 
-# === 🚗 ナビゲーションシステム画面（固定・現在地固定・選択顧客を下部へ移動版） ===
+# === 🚗 ナビゲーションシステム画面（最新修正版：選択ボタンは未選択状態で下へ移動） ===
 def route_navigation_screen():
     inject_pwa_blocker()
     
-    # 明示的にこのボタンを押さない限り、メイン画面には絶対に戻らない仕様に固定
+    # メイン画面に戻るボタンが明示的に押されない限りこの画面をキープ
     if st.button("⬅️ メインメニューに戻る", use_container_width=True):
         st.session_state.current_page = "main"
         st.rerun()
@@ -464,7 +464,7 @@ def route_navigation_screen():
         st.warning("表示できるデータがありません。「ウェブに公開」されており、1行目に「名前」と「住所」の列があるか確認してください。")
         return
 
-    # 未選択リストと選択済リストを分類（選択済は一番下にするため）
+    # 選択されている顧客名を抽出（現在地は除く）
     selected_names = [n["名前"] for n in st.session_state.selected_route_nodes if n["名前"] != "📌 現在地"]
     
     unselected_customers = []
@@ -483,7 +483,7 @@ def route_navigation_screen():
         else:
             unselected_customers.append(c_obj)
 
-    # 💡 選択されたボタンが下に並ぶよう、未選択→選択済 の順に結合したボタン配置リストを生成
+    # 💡 未選択が上、選択されたボタンは「選択されていない状態」のまま一番下へ移動するように結合
     ordered_customers = unselected_customers + selected_customers_buttons
 
     col_left, col_right = st.columns([1.8, 1.2])
@@ -494,23 +494,20 @@ def route_navigation_screen():
             name = customer["名前"]
             address = customer["住所"]
             
-            is_selected = any(n["名前"] == name for n in st.session_state.selected_route_nodes)
-            
-            if is_selected:
-                idx = [n["名前"] == name for n in st.session_state.selected_route_nodes].index(True)
-                btn_label = f"✅ 【{idx}番目】 {name}\n({address})"
-                btn_type = "primary"
-            else:
-                btn_label = f"➕ {name}\n({address})"
-                btn_type = "secondary"
+            # 💡 ご要望通り、すべてのボタンを「選択されていない状態（グレーの➕）」としてフラットに表示
+            btn_label = f"➕ {name}\n({address})"
+            btn_type = "secondary" # 常に通常（未選択）カラー
                 
             if st.button(btn_label, key=f"navi_{name}", use_container_width=True, type=btn_type):
-                if not is_selected:
-                    # 選択されたらルート配列の末尾（一番下）に追加
+                is_already_added = any(n["名前"] == name for n in st.session_state.selected_route_nodes)
+                if not is_already_added:
+                    # ルートの末尾（一番下）に追加
                     st.session_state.selected_route_nodes.append({"名前": name, "住所": address})
                 else:
+                    # すでに下にあるボタンをもう一度押した場合は、ルートから除外（トグル解除）
                     st.session_state.selected_route_nodes = [n for n in st.session_state.selected_route_nodes if n["名前"] != name]
-                st.session_state.current_page = "navi" # 確実に画面をキープ
+                
+                st.session_state.current_page = "navi" # 確実にこの画面をキープ
                 st.rerun()
 
     with col_right:
@@ -528,7 +525,7 @@ def route_navigation_screen():
             
         st.write("---")
         
-        # Googleマップ用URLの組み立て（1番目は確実に「現在地」になるためナビが正常動作します）
+        # Googleマップ用URL（1番目は確実に「現在地」からスタート）
         encoded_addresses = [urllib.parse.quote(node["住所"]) for node in st.session_state.selected_route_nodes]
         map_url = "https://www.google.com/maps/dir/" + "/".join(encoded_addresses)
         
