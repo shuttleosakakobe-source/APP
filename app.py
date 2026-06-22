@@ -51,7 +51,7 @@ def load_sheet_data(gid="0", custom_url=None):
     except:
         return None
 
-# --- ナビゲーション用データ取得関数（任意のURL/CSVからPandasで取得・キャッシュ30秒） ---
+# --- ナビゲーション用データ取得関数 ---
 @st.cache_data(ttl=30)
 def load_navi_data_from_url(csv_url):
     try:
@@ -396,7 +396,7 @@ def render_daily_checklist():
                     confirm_task_dialog(item)
 
 
-# === 🚗 ナビゲーションシステム画面（最新修正版：作成中ルートからは非表示） ===
+# === 🚗 ナビゲーションシステム画面（マップ起動時に右側クリア＆下寄せ維持仕様） ===
 def route_navigation_screen():
     inject_pwa_blocker()
     
@@ -412,7 +412,6 @@ def route_navigation_screen():
         st.error("ルート一覧マスターデータの読み込みに失敗しました。Webに公開されているか確認してください。")
         return
 
-    # 2. 号車リスト（A列）とルート曜日リスト（1行目）を抽出
     routes_header = [col.strip() for col in master_rows[0][1:] if col.strip()]
     
     car_list = []
@@ -423,21 +422,19 @@ def route_navigation_screen():
             car_list.append(car_num)
             car_to_row_idx[car_num] = r_idx
 
-    # 3. 画面に選択ドロップダウンを表示
     col_sel1, col_sel2 = st.columns(2)
     with col_sel1:
         selected_car = st.selectbox("🚌 担当号車を選択", car_list, index=0)
     with col_sel2:
         selected_route = st.selectbox("📂 運行ルート（曜日）を選択", routes_header, index=0)
 
-    # 選択が切り替わったら選択データを初期化
+    # 選択が切り替わったら初期化
     current_selection_key = f"{selected_car}_{selected_route}"
     if st.session_state.get("last_navi_selection_key") != current_selection_key:
-        # タップされた顧客を記録する純粋なバックエンド配列
-        st.session_state.selected_route_nodes = []
+        st.session_state.selected_route_nodes = [{"名前": "📌 現在地", "住所": "現在地"}]
+        st.session_state.moved_to_bottom_names = []  # マップ移行時に下寄せさせる履歴を管理
         st.session_state.last_navi_selection_key = current_selection_key
 
-    # 4. 選択された交点セルからURLを抽出
     target_row_idx = car_to_row_idx[selected_car]
     target_col_idx = master_rows[0].index(selected_route)
     
@@ -463,11 +460,11 @@ def route_navigation_screen():
         st.warning("表示できるデータがありません。")
         return
 
-    # タップされて裏側で選択されている顧客名の一覧
-    selected_names = [n["名前"] for n in st.session_state.selected_route_nodes]
+    # 現在右側（作成中ルート）に入っている顧客
+    active_selected_names = [n["名前"] for n in st.session_state.selected_route_nodes if n["名前"] != "📌 現在地"]
     
     unselected_customers = []
-    selected_customers_buttons = []
+    bottom_customers = []
     
     for customer in current_customers:
         name = customer.get("名前") or customer.get("顧客名") or "名前なし"
@@ -477,13 +474,26 @@ def route_navigation_screen():
         address = str(address).strip()
         
         c_obj = {"名前": name, "住所": address}
-        if name in selected_names:
-            selected_customers_buttons.append(c_obj)
+        
+        # 右側にあるか、またはすでにマップ送信されて「下寄せ履歴」にあるものは下に送る
+        if name in active_selected_names or name in st.session_state.moved_to_bottom_names:
+            bottom_customers.append(c_obj)
         else:
             unselected_customers.append(c_obj)
 
-    # 未選択ボタンが上、選択済み（タップ済み）ボタンが未選択状態のまま一番下へ移動
-    ordered_customers = unselected_customers + selected_customers_buttons
+    # 💡 履歴順を維持するため、下寄せの並び順を調整
+    sorted_bottom = []
+    # 1. まず現在選択中のものを追加
+    for name in active_selected_names:
+        match = next((c for c in bottom_customers if c["名前"] == name), None)
+        if match: sorted_bottom.append(match)
+    # 2. 次に過去に下寄せされたものを追加
+    for name in st.session_state.moved_to_bottom_names:
+        if name not in active_selected_names:
+            match = next((c for c in bottom_customers if c["名前"] == name), None)
+            if match: sorted_bottom.append(match)
+
+    ordered_customers = unselected_customers + sorted_bottom
 
     col_left, col_right = st.columns([1.8, 1.2])
 
@@ -493,46 +503,74 @@ def route_navigation_screen():
             name = customer["名前"]
             address = customer["住所"]
             
-            # 💡 見た目は常に通常（未選択）カラー
-            btn_label = f"➕ {name}\n({address})"
-            btn_type = "secondary" 
+            # 選択中のものは分かりやすいように「✔」マーク、下寄せ済みのものは「➕」
+            if name in active_selected_names:
+                btn_label = f"✔ {name}\n({address})"
+                btn_type = "primary"
+            else:
+                btn_label = f"➕ {name}\n({address})"
+                btn_type = "secondary"
                 
             if st.button(btn_label, key=f"navi_{name}", use_container_width=True, type=btn_type):
-                is_already_added = any(n["名前"] == name for n in st.session_state.selected_route_nodes)
-                if not is_already_added:
-                    # タップされたらGoogleマップ送信用の裏データに追加
+                if name not in active_selected_names:
+                    # 右側ルートに追加
                     st.session_state.selected_route_nodes.append({"名前": name, "住所": address})
+                    # 下寄せ候補からも削除（重複を避ける）
+                    if name in st.session_state.moved_to_bottom_names:
+                        st.session_state.moved_to_bottom_names.remove(name)
                 else:
-                    # 一番下にあるボタンをもう一度押したら解除して元の位置へ戻す（トグル）
+                    # すでに選択されているものをもう一度押したら解除して元の位置に戻す
                     st.session_state.selected_route_nodes = [n for n in st.session_state.selected_route_nodes if n["名前"] != name]
+                    if name in st.session_state.moved_to_bottom_names:
+                        st.session_state.moved_to_bottom_names.remove(name)
                 
                 st.session_state.current_page = "navi"
                 st.rerun()
 
     with col_right:
-        st.caption("🗺️ ルート作成状況")
+        st.caption("🗺️ 作成中のルート")
+        for i, node in enumerate(st.session_state.selected_route_nodes):
+            if node["名前"] == "📌 現在地":
+                st.markdown(f"**出発: {node['名前']}**")
+            else:
+                st.markdown(f"**{i}. {node['名前']}**\n`{node['住所']}`")
         
-        # 💡 右側の「作成中ルート」には「📌 現在地」のみを表示し、選択したリストはここには表示しない仕様に。
-        st.markdown("**出発: 📌 現在地**")
-        st.write("")
-        st.info(f"選択済み: {len(st.session_state.selected_route_nodes)} 箇所\n（ボタンは左側の一番下に並んでいます）")
-        
-        if st.button("選択をすべてリセット", key="reset_route_btn", use_container_width=True):
-            st.session_state.selected_route_nodes = []
+        if st.button("ルートをリセット", key="reset_route_btn", use_container_width=True):
+            st.session_state.selected_route_nodes = [{"名前": "📌 現在地", "住所": "現在地"}]
+            st.session_state.moved_to_bottom_names = []
             st.session_state.current_page = "navi"
             st.rerun()
             
         st.write("---")
         
-        # 💡 Googleマップ用URL生成時のみ、現在地からスタートして裏で選択された住所をドッキング
-        map_nodes = [{"名前": "📌 現在地", "住所": "現在地"}] + st.session_state.selected_route_nodes
-        encoded_addresses = [urllib.parse.quote(node["住所"]) for node in map_nodes]
+        # URLを生成
+        encoded_addresses = [urllib.parse.quote(node["住所"]) for node in st.session_state.selected_route_nodes]
         map_url = "https://www.google.com/maps/dir/" + "/".join(encoded_addresses)
         
-        if len(map_nodes) > 11:
-            st.warning(f"⚠️ 検索は10箇所までを推奨（現在: {len(map_nodes)-1}箇所）")
+        if len(st.session_state.selected_route_nodes) > 11:
+            st.warning(f"⚠️ 検索は10箇所までを推奨")
             
-        st.link_button("🚀 Googleマップでナビ開始", map_url, use_container_width=True)
+        # 💡 通常ボタンに変更。クリック時に関数を動かして状態をリセットし、JSで別タブ展開する
+        if st.button("🚀 Googleマップでナビ開始", type="primary", use_container_width=True):
+            if len(st.session_state.selected_route_nodes) > 1:
+                # 1. 現在選択されていた名前リストを「下寄せ固定履歴」に退避
+                for node in st.session_state.selected_route_nodes:
+                    if node["名前"] != "📌 現在地" and node["名前"] not in st.session_state.moved_to_bottom_names:
+                        st.session_state.moved_to_bottom_names.insert(0, node["名前"])
+                
+                # 2. JavaScriptでGoogleマップを別タブで開く
+                js_open = f'''
+                    <script>
+                        window.open("{map_url}", "_blank");
+                    </script>
+                '''
+                st.components.v1.html(js_open, height=0, width=0)
+                
+                # 3. 右側の作成中ルートを「📌 現在地」だけにクリア
+                st.session_state.selected_route_nodes = [{"名前": "📌 現在地", "住所": "現在地"}]
+                st.rerun()
+            else:
+                st.warning("行き先が選択されていません。")
 
 
 # --- 6. メイン画面 ---
@@ -847,7 +885,8 @@ def main_screen():
 if 'login_status' not in st.session_state: st.session_state.login_status = False
 if 'logout_requested' not in st.session_state: st.session_state.logout_requested = False
 if 'current_page' not in st.session_state: st.session_state.current_page = "main"
-if 'selected_route_nodes' not in st.session_state: st.session_state.selected_route_nodes = []
+if 'selected_route_nodes' not in st.session_state: st.session_state.selected_route_nodes = [{"名前": "📌 現在地", "住所": "現在地"}]
+if 'moved_to_bottom_names' not in st.session_state: st.session_state.moved_to_bottom_names = []
 
 if not st.session_state.login_status and not st.session_state.logout_requested:
     from streamlit_javascript import st_javascript 
