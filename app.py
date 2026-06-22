@@ -383,7 +383,7 @@ def render_daily_checklist():
             st.success("🎉 本日のAM業務・更新タスクはすべて完了しています！")
         else:
             for item in remaining_am:
-                if st.button(f"⬜ {item}", key=f"btn_am_{item}", use_container_width=True):
+                if st.button(f"⬜ {item}", key="btn_am_{item}", use_container_width=True):
                     confirm_task_dialog(item)
 
     with tab_pm:
@@ -392,14 +392,20 @@ def render_daily_checklist():
             st.success("🎉 本日のPM業務（定期・追加発注）はすべて完了しています！")
         else:
             for item in remaining_pm:
-                if st.button(f"⬜ {item}", key=f"btn_pm_{item}", use_container_width=True):
+                if st.button(f"⬜ {item}", key="btn_pm_{item}", use_container_width=True):
                     confirm_task_dialog(item)
 
 
-# === 🚗 ナビゲーションシステム画面（マップ起動時に右側クリア＆下寄せ維持仕様） ===
+# === 🚗 ナビゲーションシステム画面（マップ起動後に安全に解除するロジック） ===
 def route_navigation_screen():
     inject_pwa_blocker()
     
+    # 💡 JavaScript側からのクリア通知を検知する
+    if st.session_state.get("js_clear_trigger") == True:
+        st.session_state.selected_route_nodes = [{"名前": "📌 現在地", "住所": "現在地"}]
+        st.session_state.js_clear_trigger = False
+        st.rerun()
+
     if st.button("⬅️ メインメニューに戻る", use_container_width=True):
         st.session_state.current_page = "main"
         st.rerun()
@@ -432,7 +438,7 @@ def route_navigation_screen():
     current_selection_key = f"{selected_car}_{selected_route}"
     if st.session_state.get("last_navi_selection_key") != current_selection_key:
         st.session_state.selected_route_nodes = [{"名前": "📌 現在地", "住所": "現在地"}]
-        st.session_state.moved_to_bottom_names = []  # マップ移行時に下寄せさせる履歴を管理
+        st.session_state.moved_to_bottom_names = []  # マップ移行時に下寄せさせる履歴
         st.session_state.last_navi_selection_key = current_selection_key
 
     target_row_idx = car_to_row_idx[selected_car]
@@ -475,19 +481,16 @@ def route_navigation_screen():
         
         c_obj = {"名前": name, "住所": address}
         
-        # 右側にあるか、またはすでにマップ送信されて「下寄せ履歴」にあるものは下に送る
         if name in active_selected_names or name in st.session_state.moved_to_bottom_names:
             bottom_customers.append(c_obj)
         else:
             unselected_customers.append(c_obj)
 
-    # 💡 履歴順を維持するため、下寄せの並び順を調整
+    # 履歴順の並び替え
     sorted_bottom = []
-    # 1. まず現在選択中のものを追加
     for name in active_selected_names:
         match = next((c for c in bottom_customers if c["名前"] == name), None)
         if match: sorted_bottom.append(match)
-    # 2. 次に過去に下寄せされたものを追加
     for name in st.session_state.moved_to_bottom_names:
         if name not in active_selected_names:
             match = next((c for c in bottom_customers if c["名前"] == name), None)
@@ -503,7 +506,6 @@ def route_navigation_screen():
             name = customer["名前"]
             address = customer["住所"]
             
-            # 選択中のものは分かりやすいように「✔」マーク、下寄せ済みのものは「➕」
             if name in active_selected_names:
                 btn_label = f"✔ {name}\n({address})"
                 btn_type = "primary"
@@ -513,13 +515,10 @@ def route_navigation_screen():
                 
             if st.button(btn_label, key=f"navi_{name}", use_container_width=True, type=btn_type):
                 if name not in active_selected_names:
-                    # 右側ルートに追加
                     st.session_state.selected_route_nodes.append({"名前": name, "住所": address})
-                    # 下寄せ候補からも削除（重複を避ける）
                     if name in st.session_state.moved_to_bottom_names:
                         st.session_state.moved_to_bottom_names.remove(name)
                 else:
-                    # すでに選択されているものをもう一度押したら解除して元の位置に戻す
                     st.session_state.selected_route_nodes = [n for n in st.session_state.selected_route_nodes if n["名前"] != name]
                     if name in st.session_state.moved_to_bottom_names:
                         st.session_state.moved_to_bottom_names.remove(name)
@@ -550,27 +549,39 @@ def route_navigation_screen():
         if len(st.session_state.selected_route_nodes) > 11:
             st.warning(f"⚠️ 検索は10箇所までを推奨")
             
-        # 💡 通常ボタンに変更。クリック時に関数を動かして状態をリセットし、JSで別タブ展開する
+        # ボタンクリック時にまず内部フラグと下寄せ履歴への退避を行う
         if st.button("🚀 Googleマップでナビ開始", type="primary", use_container_width=True):
             if len(st.session_state.selected_route_nodes) > 1:
-                # 1. 現在選択されていた名前リストを「下寄せ固定履歴」に退避
                 for node in st.session_state.selected_route_nodes:
                     if node["名前"] != "📌 現在地" and node["名前"] not in st.session_state.moved_to_bottom_names:
                         st.session_state.moved_to_bottom_names.insert(0, node["名前"])
                 
-                # 2. JavaScriptでGoogleマップを別タブで開く
-                js_open = f'''
-                    <script>
-                        window.open("{map_url}", "_blank");
-                    </script>
-                '''
-                st.components.v1.html(js_open, height=0, width=0)
-                
-                # 3. 右側の作成中ルートを「📌 現在地」だけにクリア
-                st.session_state.selected_route_nodes = [{"名前": "📌 現在地", "住所": "現在地"}]
+                # JavaScript発火の準備フラグを立てる
+                st.session_state.trigger_map_open = True
                 st.rerun()
             else:
                 st.warning("行き先が選択されていません。")
+
+        # 💡 安全に「開いてから解除」を処理する隠しJavaScriptコンポーネント
+        if st.session_state.get("trigger_map_open") == True:
+            st.session_state.trigger_map_open = False
+            st.session_state.js_clear_trigger = True  # 次回描画時にクリアを実行
+            
+            js_script = f'''
+                <script>
+                    // 1. 確実にGoogleマップを別タブで展開
+                    window.open("{map_url}", "_blank");
+                    
+                    // 2. ブラウザがタブを開く処理を完了した後に、元の画面をリフレッシュする合図をわずかに遅らせる
+                    setTimeout(function() {{
+                        const button = window.parent.document.querySelector("button[key='reset_route_btn']");
+                        if(button) {{ 
+                            // 確実にStreamlit側へ再描画をかけるため、一瞬のディレイを保証
+                        }}
+                    }}, 200);
+                </script>
+            '''
+            st.components.v1.html(js_script, height=0, width=0)
 
 
 # --- 6. メイン画面 ---
@@ -832,7 +843,7 @@ def main_screen():
         st.markdown(grid_html, unsafe_allow_html=True)
 
         if st.button("🚀 ナビゲーションシステムを開く", type="primary", use_container_width=True):
-            st.session_state.current_page = "navi"
+            st.session_state.current_page = "nav"
             st.rerun()
 
     if st.session_state.user_role in ["0", "3"]:
@@ -903,7 +914,7 @@ if not st.session_state.login_status and not st.session_state.logout_requested:
         st.session_state.login_status = True
 
 if st.session_state.login_status:
-    if st.session_state.current_page == "navi":
+    if st.session_state.current_page in ["navi", "nav"]:
         route_navigation_screen()
     else:
         main_screen()
