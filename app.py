@@ -1,153 +1,3 @@
-        .today-val { font-size: 14px; font-weight: bold; color: #cd1212; }
-        
-        div.stButton > button {
-            width: 100% !important;
-            height: auto !important;
-            min-height: 46px !important;
-            padding: 10px 14px !important;
-            border-radius: 10px !important;
-            font-weight: bold !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: flex-start !important; 
-        }
-        
-        div.stButton > button p {
-            text-align: left !important;
-            width: 100% !important;
-            display: block !important;
-            white-space: normal !important; 
-            word-break: break-all !important;
-            margin: 0 !important;
-            padding: 0 !important;
-        }
-        div[data-testid="stModal"] { transition: none !important; animation: none !important; }
-        div[role="dialog"] { transition: none !important; animation: none !important; }
-        div[data-testid="stToast"] { transition: none !important; animation: none !important; }
-        </style>
-    """, unsafe_allow_html=True)
-
-    data_raw = load_sheet_data(gid="0")
-    if not data_raw or len(data_raw) < 2:
-        st.error("マスターデータの読み込みに失敗しました。スプレッドシートの公開設定と通信状況を確認してください。")
-        return
-
-    header = data_raw[0]
-    data = [dict(zip(header, row)) for row in data_raw[1:]]
-    
-    current_user_data = next((r for r in data if r.get('担当者名') == st.session_state.user_name), None)
-    if current_user_data:
-        vals = list(current_user_data.values())
-        st.session_state.needs_alert = (len(vals) > 5 and str(vals[5]).strip() not in ["0", "", "None"])
-
-    st.markdown('<div class="user-label-btn">', unsafe_allow_html=True)
-    if st.button(f"👤 {st.session_state.user_name} さん", key="hidden_toggle"):
-        if st.session_state.user_role != "0" and st.session_state.user_role != "3":
-            st.session_state.show_timecard = not st.session_state.get('show_timecard', False)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
-
-    announcement = data[0].get('お知らせ', '安全運転でお願いします')
-    st.markdown(f'''
-        <div style="background-color:#fffbe6; border:2px solid #ffe58f; padding:10px; border-radius:10px; display:flex; align-items:center; margin-top: 5px;">
-            <span style="font-size:16px; margin-right:8px;">🔔</span>
-            <marquee scrollamount="5" style="color:red; font-weight:bold; font-size:16px;">{h(announcement)}</marquee>
-        </div>
-    ''', unsafe_allow_html=True)
-
-    if st.session_state.user_role == "0":
-        st.session_state.show_timecard = True
-
-    if st.session_state.user_role != "3" and st.session_state.get('show_timecard', False):
-        st.write("")
-        st.write("### 🕒 勤怠・所在打刻")
-        att_col1, att_col2, att_col3 = st.columns(3)
-        
-        status_click = None
-        with att_col1:
-            if st.button("🌅 出社", key="time_in_btn", use_container_width=True): status_click = "出社"
-        with att_col2:
-            if st.button("🚗 帰社", key="time_mid_btn", use_container_width=True): status_click = "帰社"
-        with att_col3:
-            if st.button("🌃 退社", key="time_out_btn", use_container_width=True): status_click = "退社"
-            
-        if status_click:
-            with st.spinner("タイムカード記録中..."):
-                res = post_to_gas({
-                    "status": "TIMECARD",
-                    "code": st.session_state.get('user_code', ''),
-                    "name": st.session_state.get('user_name', ''),
-                    "timecard_status": status_click
-                })
-                if res.get("status") == "success":
-                    st.toast(f"🎉 {status_click} を記録しました！", icon="✅")
-                else:
-                    st.error(f"通信に失敗しました: {res.get('message')}")
-            st.rerun()
-        st.write("---")
-
-    if st.session_state.user_role != "3":
-        visit_info, today_sched = get_visit_schedule_data(st.session_state.get('user_code', ''))
-        w1_disp = visit_info.get("1W", {}).get("display", "--/--")
-        w2_disp = visit_info.get("2W", {}).get("display", "--/--")
-        w4_disp = visit_info.get("4W", {}).get("display", "--/--")
-        w8_disp = visit_info.get("8W", {}).get("display", "--/--")
-        
-        today_str = get_jst_today().strftime('%m/%d')
-        hide_keywords = ["勉強会", "空き日", "休", "チーフ出勤"]
-        should_hide = any(kw in today_sched for kw in hide_keywords)
-
-        if should_hide:
-            st.markdown(f'''
-                <div class="visit-container">
-                    <div class="today-schedule-box">
-                        <span class="today-title">📌 本日の予定 ({today_str})</span>
-                        <span class="today-val">{h(today_sched)}</span>
-                    </div>
-                </div>
-            ''', unsafe_allow_html=True)
-        else:
-            st.markdown(f'''
-                <div class="visit-container">
-                    <div class="visit-title">📅 次回訪問日</div>
-                    <div class="visit-grid">
-                        <div class="visit-box"><div class="visit-label">1W</div><div class="visit-date">{h(w1_disp)}</div></div>
-                        <div class="visit-box"><div class="visit-label">2W</div><div class="visit-date">{h(w2_disp)}</div></div>
-                        <div class="visit-box"><div class="visit-label">4W</div><div class="visit-date">{h(w4_disp)}</div></div>
-                        <div class="visit-box"><div class="visit-label">8W</div><div class="visit-date">{h(w8_disp)}</div></div>
-                    </div>
-                    <div class="today-schedule-box">
-                        <span class="today-title">📌 本日の予定 ({today_str})</span>
-                        <span class="today-val">{h(today_sched)}</span>
-                    </div>
-                </div>
-            ''', unsafe_allow_html=True)
-
-    if st.session_state.user_role in ["0", "1"]:
-        check_sheet_rows = load_sheet_data(gid="1552856942")
-        check_alert = False
-        if check_sheet_rows and len(check_sheet_rows) >= 2:
-            target_cells = check_sheet_rows[1][:10]
-            if any(cell.strip() != "" for cell in target_cells):
-                check_alert = True
-        
-        alert_rows = []
-        for row in data:
-            vals = list(row.values())
-            if len(vals) >= 6 and str(vals[5]).strip() not in ["0", "", "None"]:
-                alert_rows.append({"name": str(vals[1]), "url": str(vals[3])})
-
-        st.write("") 
-        col_admin1, col_admin2 = st.columns([1, 1])
-        with col_admin1:
-            c_btn = get_img_html("8.png", "🔍", alert=check_alert, width="90px")
-            check_url = "https://docs.google.com/spreadsheets/d/1EofzMjd3dAq8sRCdQXpxw3_-T1VDWpd-aDrvxWD4fYc/edit?gid=1552856942#gid=1552856942"
-            st.markdown(f'''
-                <div class="admin-box">
-                    <a href="{check_url}" target="_blank" style="text-decoration:none; color:black;">
-                        {c_btn}
-                        <p class="btn-text" style="margin-top: 12px;">メンテナンス<br>チェック</p>
                     </a>
                 </div>
             ''', unsafe_allow_html=True)
@@ -248,3 +98,47 @@ if not st.session_state.login_status and not st.session_state.logout_requested:
     local_name = st_javascript("sessionStorage.getItem('shuttle_user_name');")
     local_role = st_javascript("sessionStorage.getItem('shuttle_user_role');")
     local_code = st_javascript("sessionStorage.getItem('shuttle_user_code');")
+    local_url = st_javascript("sessionStorage.getItem('shuttle_user_url');")
+    
+    if local_name and local_role and local_code:
+        st.session_state.user_name = str(local_name)
+        st.session_state.user_role = str(local_role)
+        st.session_state.user_code = str(local_code)
+        st.session_state.user_url = str(local_url) if local_url else ""
+        st.session_state.login_status = True
+
+if st.session_state.login_status:
+    if st.session_state.current_page in ["navi", "nav"]:
+        route_navigation_screen()
+    else:
+        main_screen()
+else:
+    inject_pwa_blocker() 
+    if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
+    u_code = st.text_input("担当者コード").strip()
+    u_pass = st.text_input("パスワード", type="password").strip()
+    
+    if st.button("ログイン", type="primary", use_container_width=True):
+        raw = load_sheet_data(gid="0")
+        if raw:
+            h = raw[0]
+            rows = [dict(zip(h, r)) for r in raw[1:]]
+            user = next((r for r in rows if str(r.get('担当者コード')).strip() == u_code and str(r.get('パスワード')).strip() == u_pass), None)
+            
+            if user:
+                vals = list(user.values())
+                st.session_state.user_name = user.get('担当者名')
+                st.session_state.user_url = user.get('URL')
+                st.session_state.needs_alert = (str(vals[5]).strip() not in ["0", ""])
+                st.session_state.user_role = str(vals[6]).strip() if len(vals) >= 7 else "2"
+                st.session_state.user_code = u_code
+                st.session_state.login_status = True
+                st.session_state.logout_requested = False
+                st.session_state.current_page = "main"
+                
+                set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role, st.session_state.user_code)
+                st.rerun()
+            else:
+                st.error("認証失敗")
+        else:
+            st.error("マスターデータの読み込みに失敗しました")
