@@ -570,19 +570,69 @@ def route_navigation_screen():
             else:
                 st.warning("行き先が選択されていません。")
 
-        # アプリ起動用のJavaScript埋め込み
-        if st.session_state.get("trigger_map_open") == True:
-            st.session_state.trigger_map_open = False
-            st.session_state.js_clear_trigger = True  
-            
-            # 💡 スマホのGoogleマップアプリを直接キックするリンク展開
-            js_script = f'''
-                <script>
-                    // スマホアプリのディープリンクを優先させるため、通常の遷移処理を実行
-                    window.open("{map_url}", "_blank");
-                </script>
-            '''
-            st.components.v1.html(js_script, height=0, width=0)
+# アプリ起動用のJavaScript埋め込み
+if st.session_state.get("trigger_map_open") == True:
+    st.session_state.trigger_map_open = False
+    st.session_state.js_clear_trigger = True
+
+    js_script = f"""
+    <script>
+
+    const mapUrl = "{map_url}";
+    const ua = navigator.userAgent || navigator.vendor || window.opera;
+
+    function openGoogleMaps() {{
+
+        // Android
+        if (/android/i.test(ua)) {{
+
+            const intentUrl =
+                "intent://" +
+                mapUrl
+                    .replace("https://", "")
+                    .replace("http://", "") +
+                "#Intent;" +
+                "scheme=https;" +
+                "package=com.google.android.apps.maps;" +
+                "end";
+
+            window.location.href = intentUrl;
+
+            setTimeout(() => {{
+                window.location.href = mapUrl;
+            }}, 1500);
+
+            return;
+        }}
+
+        // iPhone / iPad
+        if (/iPad|iPhone|iPod/.test(ua)) {{
+
+            const iosUrl =
+                mapUrl.replace(
+                    "https://www.google.com/maps/",
+                    "comgooglemaps://"
+                );
+
+            window.location.href = iosUrl;
+
+            setTimeout(() => {{
+                window.location.href = mapUrl;
+            }}, 1500);
+
+            return;
+        }}
+
+        // Windows / Mac
+        window.open(mapUrl, "_blank");
+    }}
+
+    openGoogleMaps();
+
+    </script>
+    """
+
+    st.components.v1.html(js_script, height=0, width=0)
 
 
 # --- 6. メイン画面 ---
