@@ -186,7 +186,6 @@ def get_visit_schedule_data(user_code):
             
     w2_obj = None
     for sched in all_schedules:
-        # 💡 Glen から and へタイポ修正完了
         if sched["date"] >= today and sched["type"] == w2_target:
             w2_obj = sched
             visit_dates["2W"] = {"display": get_disp_str(sched)}
@@ -397,7 +396,7 @@ def render_daily_checklist():
                     confirm_task_dialog(item)
 
 
-# === 🚗 ナビゲーションシステム画面（iOS/Android両方アプリ強制起動対応版） ===
+# === 🚗 ナビゲーションシステム画面 ===
 def route_navigation_screen():
     inject_pwa_blocker()
     
@@ -553,9 +552,9 @@ def route_navigation_screen():
                 
             # 2. Android専用 (intent://) ブラウザを完全にバイパス
             if waypoints_str:
-                android_url = f"intent://maps.google.com/maps?daddr={dest_address}&waypoints={waypoints_str}&tg=driving#Intent;scheme=http;package=com.google.android.apps.maps;end"
+                android_url = f"intent://https://www.google.com/maps/dir/?api=1&destination={dest_address}&waypoints={waypoints_str}&travelmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end"
             else:
-                android_url = f"intent://maps.google.com/maps?daddr={dest_address}&tg=driving#Intent;scheme=http;package=com.google.android.apps.maps;end"
+                android_url = f"intent://https://www.google.com/maps/dir/?api=1&destination={dest_address}&travelmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end"
                 
             # 3. PC/フォールバック用標準WebURL
             if waypoints_str:
@@ -564,8 +563,8 @@ def route_navigation_screen():
                 web_url = f"https://www.google.com/maps/dir/?api=1&destination={dest_address}&travelmode=driving"
         else:
             ios_url = "comgooglemaps://"
-            android_url = "intent://maps.google.com/maps#Intent;scheme=http;package=com.google.android.apps.maps;end"
-            web_url = "https://www.google.com/maps"
+            android_url = "intent://https://www.google.com/maps/dir/?api=1#Intent;scheme=https;package=com.google.android.apps.maps;end"
+            web_url = "https://www.google.com/maps/dir/?api=1"
 
         if len(st.session_state.selected_route_nodes) > 11:
             st.warning(f"⚠️ 検索は10箇所までを推奨")
@@ -820,17 +819,23 @@ def main_screen():
         st.write("") 
         col_admin1, col_admin2 = st.columns([1, 1])
         with col_admin1:
-            # 💡 途切れていた末尾の構文エラーも綺麗に修復
             c_btn = get_img_html("8.png", "🔍", alert=check_alert, width="90px")
+            if st.button("🔍 メンテチェック", key="admin_check_btn", use_container_width=True):
+                st.session_state.current_page = "checklist"
+                st.rerun()
+                
+    # チェックリストの表示要件などがあればここに描画を挟むことが可能です
+    if st.session_state.user_role == "0":
+        render_daily_checklist()
 
-# アプリケーションのエントリーポイント制御ロジック
+
+# --- 7. アプリケーションのエントリーポイント制御 ---
 if "current_page" not in st.session_state:
     st.session_state.current_page = "main"
 
 if st.session_state.current_page == "navi":
     route_navigation_screen()
 else:
-    # 暫定的なログイン情報ダミー（ログイン機能が別途ある場合はセッションに合わせてください）
     if "user_name" not in st.session_state:
         st.session_state.user_name = "管理者"
         st.session_state.user_role = "0"
