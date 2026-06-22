@@ -186,7 +186,8 @@ def get_visit_schedule_data(user_code):
             
     w2_obj = None
     for sched in all_schedules:
-        if sched["date"] >= today Glen and sched["type"] == w2_target:
+        # 🛠️ 構文エラーの原因だった「Glen」を除去しました
+        if sched["date"] >= today and sched["type"] == w2_target:
             w2_obj = sched
             visit_dates["2W"] = {"display": get_disp_str(sched)}
             break
@@ -396,7 +397,7 @@ def render_daily_checklist():
                     confirm_task_dialog(item)
 
 
-# === 🚗 ナビゲーションシステム画面（最新修正版：選択ボタンは未選択状態で下へ移動） ===
+# === 🚗 ナビゲーションシステム画面 ===
 def route_navigation_screen():
     inject_pwa_blocker()
     
@@ -483,7 +484,7 @@ def route_navigation_screen():
         else:
             unselected_customers.append(c_obj)
 
-    # 💡 未選択が上、選択されたボタンは「選択されていない状態」のまま一番下へ移動するように結合
+    # 未選択が上、選択されたボタンは「選択されていない状態」のまま一番下へ移動するように結合
     ordered_customers = unselected_customers + selected_customers_buttons
 
     col_left, col_right = st.columns([1.8, 1.2])
@@ -494,7 +495,7 @@ def route_navigation_screen():
             name = customer["名前"]
             address = customer["住所"]
             
-            # 💡 ご要望通り、すべてのボタンを「選択されていない状態（グレーの➕）」としてフラットに表示
+            # すべてのボタンを「選択されていない状態（グレーの➕）」としてフラットに表示
             btn_label = f"➕ {name}\n({address})"
             btn_type = "secondary" # 常に通常（未選択）カラー
                 
