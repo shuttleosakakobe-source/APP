@@ -26,7 +26,7 @@ def get_jst_today():
 GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyYE1X3s54DpCN78iOpXODulShVvYzjBJYKjvLtBhmW1x2An4MubsM7rQy2dusVFOhg/exec"
 
 # =================================================================
-# ⚙️ 巡回ナビ用マスターシート設定
+# ⚙️ ナビゲーションシステム用マスターシート設定
 # =================================================================
 MASTER_SPREADSHEET_ID = "1cPgQ3Ej3P7JZPaxprFQnbnDkCatQ15lEHyF9C9tMgZ4"
 MASTER_GID = "1124312474"
@@ -51,7 +51,7 @@ def load_sheet_data(gid="0", custom_url=None):
     except:
         return None
 
-# --- 巡回ナビ用データ取得関数（任意のURL/CSVからPandasで取得・キャッシュ30秒） ---
+# --- ナビゲーション用データ取得関数（任意のURL/CSVからPandasで取得・キャッシュ30秒） ---
 @st.cache_data(ttl=30)
 def load_navi_data_from_url(csv_url):
     try:
@@ -396,15 +396,16 @@ def render_daily_checklist():
                     confirm_task_dialog(item)
 
 
-# === 🚗 動的巡回ナビ画面（新マスター連動版） ===
+# === 🚗 ナビゲーションシステム画面（固定・現在地固定・選択顧客を下部へ移動版） ===
 def route_navigation_screen():
     inject_pwa_blocker()
     
+    # 明示的にこのボタンを押さない限り、メイン画面には絶対に戻らない仕様に固定
     if st.button("⬅️ メインメニューに戻る", use_container_width=True):
         st.session_state.current_page = "main"
         st.rerun()
         
-    st.write("### 🚗 顧客巡回ルート作成ナビ")
+    st.write("### 🚗 ナビゲーションシステム")
     
     # 1. マスターデータの全取得
     master_rows = load_sheet_data(gid=MASTER_GID)
@@ -413,7 +414,7 @@ def route_navigation_screen():
         return
 
     # 2. 号車リスト（A列）とルート曜日リスト（1行目）を抽出
-    routes_header = [col.strip() for col in master_rows[0][1:] if col.strip()] # B1, C1, D1...
+    routes_header = [col.strip() for col in master_rows[0][1:] if col.strip()]
     
     car_list = []
     car_to_row_idx = {}
@@ -423,17 +424,17 @@ def route_navigation_screen():
             car_list.append(car_num)
             car_to_row_idx[car_num] = r_idx
 
-    # 3. 画面に選択ドロップダウン（セレクトボックス）を表示
+    # 3. 画面に選択ドロップダウンを表示
     col_sel1, col_sel2 = st.columns(2)
     with col_sel1:
         selected_car = st.selectbox("🚌 担当号車を選択", car_list, index=0)
     with col_sel2:
         selected_route = st.selectbox("📂 運行ルート（曜日）を選択", routes_header, index=0)
 
-    # 選択が切り替わったら選択ルート状態をリセットする処理
+    # 選択が切り替わったら選択データを初期化（最初の一番目は必ず「現在地」で固定）
     current_selection_key = f"{selected_car}_{selected_route}"
     if st.session_state.get("last_navi_selection_key") != current_selection_key:
-        st.session_state.selected_route_nodes = []
+        st.session_state.selected_route_nodes = [{"名前": "📌 現在地", "住所": "現在地"}]
         st.session_state.last_navi_selection_key = current_selection_key
 
     # 4. 選択された「号車」と「ルート」の交点セルからURLを抽出
@@ -448,38 +449,56 @@ def route_navigation_screen():
         st.warning(f"⚠️ 選択された【{selected_car}号車 - {selected_route}】にはルートデータのURLが登録されていません。")
         return
 
-    # URLからSS_IDとGidを抽出してCSVエクスポート用URLを生成
+    # URLからIDとGidを抽出
     ss_id, sheet_gid = extract_ss_details(target_url_str)
     if not ss_id:
-        st.error("登録されているURLの形式が正しくありません。GoogleスプレッドシートのURLであることを確認してください。")
+        st.error("登録されているURLの形式が正しくありません。")
         return
 
     target_csv_url = f"https://docs.google.com/spreadsheets/d/{ss_id}/export?format=csv&gid={sheet_gid}"
 
-    with st.spinner("対象シートの最新データを読み込み中..."):
+    with st.spinner("最新データを読み込み中..."):
         current_customers = load_navi_data_from_url(target_csv_url)
 
     if not current_customers:
-        st.warning("表示できるデータがありません。対象シートが「ウェブに公開」されており、1行目に「名前」と「住所」の列があるか確認してください。")
+        st.warning("表示できるデータがありません。「ウェブに公開」されており、1行目に「名前」と「住所」の列があるか確認してください。")
         return
+
+    # 未選択リストと選択済リストを分類（選択済は一番下にするため）
+    selected_names = [n["名前"] for n in st.session_state.selected_route_nodes if n["名前"] != "📌 現在地"]
+    
+    unselected_customers = []
+    selected_customers_buttons = []
+    
+    for customer in current_customers:
+        name = customer.get("名前") or customer.get("顧客名") or "名前なし"
+        address = customer.get("住所", "")
+        if pd.isna(address) or not str(address).strip():
+            continue
+        address = str(address).strip()
+        
+        c_obj = {"名前": name, "住所": address}
+        if name in selected_names:
+            selected_customers_buttons.append(c_obj)
+        else:
+            unselected_customers.append(c_obj)
+
+    # 💡 選択されたボタンが下に並ぶよう、未選択→選択済 の順に結合したボタン配置リストを生成
+    ordered_customers = unselected_customers + selected_customers_buttons
 
     col_left, col_right = st.columns([1.8, 1.2])
 
     with col_left:
-        st.caption("📌 訪問する順番にタップしてください")
-        for customer in current_customers:
-            name = customer.get("名前") or customer.get("顧客名") or "名前なし"
-            address = customer.get("住所", "")
+        st.caption("📌 訪問する順番にタップしてください（選択した顧客は下へ移動します）")
+        for customer in ordered_customers:
+            name = customer["名前"]
+            address = customer["住所"]
             
-            if pd.isna(address) or not str(address).strip():
-                continue
-                
-            address = str(address).strip()
             is_selected = any(n["名前"] == name for n in st.session_state.selected_route_nodes)
             
             if is_selected:
                 idx = [n["名前"] == name for n in st.session_state.selected_route_nodes].index(True)
-                btn_label = f"✅ 【{idx + 1}番目】 {name}\n({address})"
+                btn_label = f"✅ 【{idx}番目】 {name}\n({address})"
                 btn_type = "primary"
             else:
                 btn_label = f"➕ {name}\n({address})"
@@ -487,31 +506,36 @@ def route_navigation_screen():
                 
             if st.button(btn_label, key=f"navi_{name}", use_container_width=True, type=btn_type):
                 if not is_selected:
+                    # 選択されたらルート配列の末尾（一番下）に追加
                     st.session_state.selected_route_nodes.append({"名前": name, "住所": address})
                 else:
                     st.session_state.selected_route_nodes = [n for n in st.session_state.selected_route_nodes if n["名前"] != name]
+                st.session_state.current_page = "navi" # 確実に画面をキープ
                 st.rerun()
 
     with col_right:
-        st.caption("🗺️ 作成中のルート")
-        if not st.session_state.selected_route_nodes:
-            st.info("顧客をタップしてルートを追加してください。")
-        else:
-            for i, node in enumerate(st.session_state.selected_route_nodes):
-                st.markdown(f"**{i+1}. {node['名前']}**\n`{node['住所']}`")
+        st.caption("🗺️ 作成中のルート（現在地発）")
+        for i, node in enumerate(st.session_state.selected_route_nodes):
+            if node["名前"] == "📌 現在地":
+                st.markdown(f"**出発: {node['名前']}**")
+            else:
+                st.markdown(f"**{i}. {node['名前']}**\n`{node['住所']}`")
+        
+        if st.button("ルートをリセット", key="reset_route_btn", use_container_width=True):
+            st.session_state.selected_route_nodes = [{"名前": "📌 現在地", "住所": "現在地"}]
+            st.session_state.current_page = "navi"
+            st.rerun()
             
-            if st.button("ルートをリセット", key="reset_route_btn", use_container_width=True):
-                st.session_state.selected_route_nodes = []
-                st.rerun()
-                
-            st.write("---")
-            encoded_addresses = [urllib.parse.quote(node["住所"]) for node in st.session_state.selected_route_nodes]
-            map_url = "https://www.google.com/maps/dir/" + "/".join(encoded_addresses)
+        st.write("---")
+        
+        # Googleマップ用URLの組み立て（1番目は確実に「現在地」になるためナビが正常動作します）
+        encoded_addresses = [urllib.parse.quote(node["住所"]) for node in st.session_state.selected_route_nodes]
+        map_url = "https://www.google.com/maps/dir/" + "/".join(encoded_addresses)
+        
+        if len(st.session_state.selected_route_nodes) > 11:
+            st.warning(f"⚠️ 検索は10箇所までを推奨（現在: {len(st.session_state.selected_route_nodes)-1}箇所）")
             
-            if len(st.session_state.selected_route_nodes) > 10:
-                st.warning(f"⚠️ 検索は10箇所までを推奨（現在: {len(st.session_state.selected_route_nodes)}箇所）")
-                
-            st.link_button("🚀 Googleマップでナビ開始", map_url, use_container_width=True)
+        st.link_button("🚀 Googleマップでナビ開始", map_url, use_container_width=True)
 
 
 # --- 6. メイン画面 ---
@@ -621,7 +645,6 @@ def main_screen():
         </style>
     """, unsafe_allow_html=True)
 
-    # ⚡ gid="0" のデータを1度だけ取得・加工
     data_raw = load_sheet_data(gid="0")
     header = data_raw[0]
     data = [dict(zip(header, row)) for row in data_raw[1:]]
@@ -776,8 +799,8 @@ def main_screen():
         '''
         st.markdown(grid_html, unsafe_allow_html=True)
 
-        # 🚗 巡回ナビ起動ボタン（どの号車の人でも遷移できるように文言を汎用化）
-        if st.button("🚗 顧客巡回ルートナビを開く", type="primary", use_container_width=True):
+        # 🚗 ナビゲーションシステム 起動ボタン
+        if st.button("🚀 ナビゲーションシステムを開く", type="primary", use_container_width=True):
             st.session_state.current_page = "navi"
             st.rerun()
 
@@ -831,7 +854,7 @@ def main_screen():
 if 'login_status' not in st.session_state: st.session_state.login_status = False
 if 'logout_requested' not in st.session_state: st.session_state.logout_requested = False
 if 'current_page' not in st.session_state: st.session_state.current_page = "main"
-if 'selected_route_nodes' not in st.session_state: st.session_state.selected_route_nodes = []
+if 'selected_route_nodes' not in st.session_state: st.session_state.selected_route_nodes = [{"名前": "📌 現在地", "住所": "現在地"}]
 
 if not st.session_state.login_status and not st.session_state.logout_requested:
     from streamlit_javascript import st_javascript 
