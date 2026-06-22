@@ -571,57 +571,16 @@ def route_navigation_screen():
         if len(st.session_state.selected_route_nodes) > 11:
             st.warning(f"⚠️ 検索は10箇所までを推奨")
             
-        if st.button("🚀 Googleマップでナビ開始", type="primary", use_container_width=True):
-            if len(st.session_state.selected_route_nodes) > 1:
-                for node in st.session_state.selected_route_nodes:
-                    if node["名前"] != "📌 現在地" and node["名前"] not in st.session_state.moved_to_bottom_names:
-                        st.session_state.moved_to_bottom_names.insert(0, node["名前"])
-                
-                st.session_state.pending_map_url = map_url
-                st.session_state.trigger_map_open = True
-                st.rerun()
-            else:
-                st.warning("行き先が選択されていません。")
-
-
-        # Open Google Maps with platform-specific URL handling
-        if st.session_state.get("trigger_map_open") == True:
-            st.session_state.trigger_map_open = False
-            st.session_state.js_clear_trigger = True
-            open_url = st.session_state.pop("pending_map_url", "https://www.google.com/maps")
-
-            js_script = f"""
-            <script>
-            const mapUrl = {json.dumps(open_url)};
-            const ua = navigator.userAgent || navigator.vendor || window.opera;
-
-            function openGoogleMaps() {{
-                if (/android/i.test(ua)) {{
-                    const intentUrl =
-                        "intent://" +
-                        mapUrl.replace("https://", "").replace("http://", "") +
-                        "#Intent;scheme=https;package=com.google.android.apps.maps;end";
-
-                    window.location.href = intentUrl;
-                    setTimeout(() => {{ window.location.href = mapUrl; }}, 1500);
-                    return;
-                }}
-
-                if (/iPad|iPhone|iPod/.test(ua)) {{
-                    const iosUrl = mapUrl.replace("https://www.google.com/maps/", "comgooglemaps://");
-                    window.location.href = iosUrl;
-                    setTimeout(() => {{ window.location.href = mapUrl; }}, 1500);
-                    return;
-                }}
-
-                window.open(mapUrl, "_blank");
-            }}
-
-            openGoogleMaps();
-            </script>
-            """
-
-            st.components.v1.html(js_script, height=0, width=0)
+        if len(st.session_state.selected_route_nodes) > 1:
+            st.link_button(
+                "🚀 Googleマップでナビ開始",
+                map_url,
+                type="primary",
+                use_container_width=True,
+            )
+        else:
+            st.button("🚀 Googleマップでナビ開始", type="primary", use_container_width=True, disabled=True)
+            st.warning("行き先が選択されていません。")
 
 # --- 6. メイン画面 ---
 def main_screen():
