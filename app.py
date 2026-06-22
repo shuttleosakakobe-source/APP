@@ -2,10 +2,12 @@ import streamlit as st
 import os
 import base64
 import urllib.request
+import urllib.parse
 import csv
 import io
 import json
 import re
+import pandas as pd
 from datetime import datetime, timedelta, timezone
 
 # --- 1. ページ設定 ---
@@ -22,6 +24,13 @@ def get_jst_today():
 
 # --- ⚠️ 最新のGASウェブアプリURLに差し替えてください ---
 GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyYE1X3s54DpCN78iOpXODulShVvYzjBJYKjvLtBhmW1x2An4MubsM7rQy2dusVFOhg/exec"
+
+# =================================================================
+# ⚙️ 巡回ナビ用スプレッドシート設定（113号車）
+# =================================================================
+NAVI_SPREADSHEET_ID = "1Z-YYXRzsTo6veh0EfPDdNJv2JEnSHO-GrhY3IdOuUI8"
+NAVI_SHEET_NAMES = ["C火", "C水"]
+# =================================================================
 
 # --- 2. スプレッドシート取得関数 ---
 @st.cache_data(ttl=0)
@@ -41,6 +50,17 @@ def load_sheet_data(gid="0", custom_url=None):
         return list(reader)
     except:
         return None
+
+# --- 巡回ナビ用データ取得関数（Pandasベース・キャッシュ30秒） ---
+@st.cache_data(ttl=30)
+def load_navi_data_from_sheets(spreadsheet_id, sheet_name):
+    url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(sheet_name)}"
+    try:
+        df = pd.read_csv(url)
+        df.columns = df.columns.str.strip()
+        return df.to_dict(orient="records")
+    except:
+        return []
 
 # --- 日付解析関数 ---
 def parse_flexible_date(date_str):
@@ -185,7 +205,7 @@ def get_visit_schedule_data(user_code):
 
     return visit_dates, today_schedule
 
-# --- ⚡ [高速化・最適化] 画像のBase64エンコードをキャッシュ化 ---
+# --- ⚡ 画像のBase64エンコードをキャッシュ化 ---
 @st.cache_data
 def _get_base64_img(file_name):
     if os.path.exists(file_name):
@@ -217,10 +237,11 @@ def set_login_storage(name, url, alert, role, code):
 def process_logout():
     from streamlit_javascript import st_javascript 
     st_javascript("sessionStorage.clear();")
-    st_javascript("localStorage.clear();")  # 過去の古いログインキャッシュも念のため全消去
+    st_javascript("localStorage.clear();")
     st.session_state.login_status = False
     st.session_state.logout_requested = True
     st.session_state.show_timecard = False
+    st.session_state.current_page = "main"
     if 'user_name' in st.session_state: del st.session_state.user_name
     if 'user_code' in st.session_state: del st.session_state.user_code
     if 'user_role' in st.session_state: del st.session_state.user_role
@@ -361,6 +382,82 @@ def render_daily_checklist():
                 if st.button(f"⬜ {item}", key=f"btn_pm_{item}", use_container_width=True):
                     confirm_task_dialog(item)
 
+
+# === 🚗 巡回ナビ画面（新しく追加したアプリ） ===
+def route_navigation_screen():
+    inject_pwa_blocker()
+    
+    # 戻るボタンを上部に配置
+    if st.button("⬅️ メインメニューに戻る", use_container_width=True):
+        st.session_state.current_page = "main"
+        st.rerun()
+        
+    st.write("### 🚗 113号車 顧客巡回ルート作成")
+    
+    selected_sheet = st.selectbox("📂 運行ルート（シート名）を選択", NAVI_SHEET_NAMES)
+
+    if selected_sheet != st.session_state.get("last_selected_sheet"):
+        st.session_state.selected_route_nodes = []
+        st.session_state.last_selected_sheet = selected_sheet
+
+    with st.spinner("最新データを読み込み中..."):
+        current_customers = load_navi_data_from_sheets(NAVI_SPREADSHEET_ID, selected_sheet)
+
+    if not current_customers:
+        st.warning(f"表示できるデータがありません。シート「{selected_sheet}」に「名前」と「住所」の列があるか確認してください。")
+        return
+
+    col_left, col_right = st.columns([1.8, 1.2])
+
+    with col_left:
+        st.caption("📌 訪問する順番にタップしてください")
+        for customer in current_customers:
+            name = customer.get("名前", "名前なし")
+            address = customer.get("住所", "")
+            
+            if pd.isna(address) or not str(address).strip():
+                continue
+                
+            address = str(address).strip()
+            is_selected = any(n["名前"] == name for n in st.session_state.selected_route_nodes)
+            
+            if is_selected:
+                idx = [n["名前"] == name for n in st.session_state.selected_route_nodes].index(True)
+                btn_label = f"✅ 【{idx + 1}番目】 {name}\n({address})"
+                btn_type = "primary"
+            else:
+                btn_label = f"➕ {name}\n({address})"
+                btn_type = "secondary"
+                
+            if st.button(btn_label, key=f"navi_{name}", use_container_width=True, type=btn_type):
+                if not is_selected:
+                    st.session_state.selected_route_nodes.append({"名前": name, "住所": address})
+                else:
+                    st.session_state.selected_route_nodes = [n for n in st.session_state.selected_route_nodes if n["名前"] != name]
+                st.rerun()
+
+    with col_right:
+        st.caption("🗺️ 作成中のルート")
+        if not st.session_state.selected_route_nodes:
+            st.info("顧客をタップしてルートを追加してください。")
+        else:
+            for i, node in enumerate(st.session_state.selected_route_nodes):
+                st.markdown(f"**{i+1}. {node['名前']}**\n`{node['住所']}`")
+            
+            if st.button("ルートをリセット", key="reset_route_btn", use_container_width=True):
+                st.session_state.selected_route_nodes = []
+                st.rerun()
+                
+            st.write("---")
+            encoded_addresses = [urllib.parse.quote(node["住所"]) for node in st.session_state.selected_route_nodes]
+            map_url = "https://www.google.com/maps/dir/" + "/".join(encoded_addresses)
+            
+            if len(st.session_state.selected_route_nodes) > 10:
+                st.warning(f"⚠️ 検索は10箇所までを推奨（現在: {len(st.session_state.selected_route_nodes)}箇所）")
+                
+            st.link_button("🚀 Googleマップでナビ開始", map_url, use_container_width=True)
+
+
 # --- 6. メイン画面 ---
 def main_screen():
     inject_pwa_blocker() 
@@ -468,7 +565,7 @@ def main_screen():
         </style>
     """, unsafe_allow_html=True)
 
-    # ⚡ [高速化・最適化] gid="0" のデータをここで1度だけ取得・加工する（重複読み込みの排除）
+    # ⚡ gid="0" のデータを1度だけ取得・加工
     data_raw = load_sheet_data(gid="0")
     header = data_raw[0]
     data = [dict(zip(header, row)) for row in data_raw[1:]]
@@ -613,6 +710,7 @@ def main_screen():
         b4 = get_img_html("5.png", "🧽")
         b5 = get_img_html("image_d3349a.png", "🎓")
 
+        # 💡 4カラム配置（最後の枠に「巡回ナビ」への切り替えボタンを設置するためにHTMLを少し調整）
         grid_html = f'''
             <div class="button-grid">
                 <a class="btn-item" href="https://docs.google.com/forms/d/e/1FAIpQLSc4E3L_UJkVxMMSTOYgcw3SJyoBixHoJfhe0WC-x1wbK6lsHw/viewform?usp=sharing" target="_blank">{b1}<p class="btn-text" style="margin-top:6px;">メンテナンス<br>入力</p></a>
@@ -622,6 +720,11 @@ def main_screen():
             </div>
         '''
         st.markdown(grid_html, unsafe_allow_html=True)
+
+        # 🚗 4枚のタイルの下に「113号車 巡回ナビ」へ画面遷移するボタンを配置
+        if st.button("🚗 113号車 巡回ルートナビを開く", type="primary", use_container_width=True):
+            st.session_state.current_page = "navi"
+            st.rerun()
 
     if st.session_state.user_role in ["0", "3"]:
         st.write("---")
@@ -672,6 +775,8 @@ def main_screen():
 # --- 7. 実行ロジック ---
 if 'login_status' not in st.session_state: st.session_state.login_status = False
 if 'logout_requested' not in st.session_state: st.session_state.logout_requested = False
+if 'current_page' not in st.session_state: st.session_state.current_page = "main"
+if 'selected_route_nodes' not in st.session_state: st.session_state.selected_route_nodes = []
 
 if not st.session_state.login_status and not st.session_state.logout_requested:
     from streamlit_javascript import st_javascript 
@@ -688,7 +793,11 @@ if not st.session_state.login_status and not st.session_state.logout_requested:
         st.session_state.login_status = True
 
 if st.session_state.login_status:
-    main_screen()
+    # ページ状態によって表示を切り替え
+    if st.session_state.current_page == "navi":
+        route_navigation_screen()
+    else:
+        main_screen()
 else:
     inject_pwa_blocker() 
     if os.path.exists("1.png"): st.image("1.png", use_container_width=True)
@@ -711,6 +820,7 @@ else:
                 st.session_state.user_code = u_code
                 st.session_state.login_status = True
                 st.session_state.logout_requested = False
+                st.session_state.current_page = "main"
                 
                 set_login_storage(st.session_state.user_name, st.session_state.user_url, st.session_state.needs_alert, st.session_state.user_role, st.session_state.user_code)
                 st.rerun()
