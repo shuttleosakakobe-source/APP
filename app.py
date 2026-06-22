@@ -449,6 +449,7 @@ def route_navigation_screen():
         st.session_state.selected_route_nodes = [{"名前": "📌 現在地", "住所": "現在地"}]
         st.session_state.moved_to_bottom_names = []  
         st.session_state.last_navi_selection_key = current_selection_key
+        st.session_state.pop("pending_nav_url", None)
 
     target_row_idx = car_to_row_idx[selected_car]
     target_col_idx = master_rows[0].index(selected_route)
@@ -545,6 +546,7 @@ def route_navigation_screen():
             st.session_state.selected_route_nodes = [{"名前": "📌 現在地", "住所": "現在地"}]
             st.session_state.moved_to_bottom_names = []
             st.session_state.current_page = "navi"
+            st.session_state.pop("pending_nav_url", None)
             st.rerun()
             
         st.write("---")
@@ -571,15 +573,32 @@ def route_navigation_screen():
         if len(st.session_state.selected_route_nodes) > 11:
             st.warning(f"⚠️ 検索は10箇所までを推奨")
             
-        if len(st.session_state.selected_route_nodes) > 1:
+        if st.session_state.get("pending_nav_url"):
             st.link_button(
-                "🚀 Googleマップでナビ開始",
-                map_url,
+                "🚀 Googleマップを開く",
+                st.session_state.pending_nav_url,
                 type="primary",
                 use_container_width=True,
             )
-        else:
-            st.button("🚀 Googleマップでナビ開始", type="primary", use_container_width=True, disabled=True)
+
+        if len(st.session_state.selected_route_nodes) > 1:
+            if st.button("✅ 選択を確定してナビ開始", type="primary", use_container_width=True):
+                selected_names = [
+                    node["名前"]
+                    for node in st.session_state.selected_route_nodes
+                    if node["名前"] != "📌 現在地"
+                ]
+                for name in reversed(selected_names):
+                    if name in st.session_state.moved_to_bottom_names:
+                        st.session_state.moved_to_bottom_names.remove(name)
+                    st.session_state.moved_to_bottom_names.insert(0, name)
+
+                st.session_state.pending_nav_url = map_url
+                st.session_state.selected_route_nodes = [{"名前": "📌 現在地", "住所": "現在地"}]
+                st.session_state.current_page = "navi"
+                st.rerun()
+        elif not st.session_state.get("pending_nav_url"):
+            st.button("✅ 選択を確定してナビ開始", type="primary", use_container_width=True, disabled=True)
             st.warning("行き先が選択されていません。")
 
 # --- 6. メイン画面 ---
