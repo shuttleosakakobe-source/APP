@@ -26,10 +26,10 @@ def get_jst_today():
 GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyYE1X3s54DpCN78iOpXODulShVvYzjBJYKjvLtBhmW1x2An4MubsM7rQy2dusVFOhg/exec"
 
 # =================================================================
-# ⚙️ 巡回ナビ用スプレッドシート設定（113号車）
+# ⚙️ 巡回ナビ用マスターシート設定
 # =================================================================
-NAVI_SPREADSHEET_ID = "1Z-YYXRzsTo6veh0EfPDdNJv2JEnSHO-GrhY3IdOuUI8"
-NAVI_SHEET_NAMES = ["C火", "C水"]
+MASTER_SPREADSHEET_ID = "1cPgQ3Ej3P7JZPaxprFQnbnDkCatQ15lEHyF9C9tMgZ4"
+MASTER_GID = "1124312474"
 # =================================================================
 
 # --- 2. スプレッドシート取得関数 ---
@@ -38,7 +38,7 @@ def load_sheet_data(gid="0", custom_url=None):
     if custom_url:
         target_url = custom_url
     else:
-        base_url = "https://docs.google.com/spreadsheets/d/1cPgQ3Ej3P7JZPaxprFQnbnDkCatQ15lEHyF9C9tMgZ4/export?format=csv&gid="
+        base_url = f"https://docs.google.com/spreadsheets/d/{MASTER_SPREADSHEET_ID}/export?format=csv&gid="
         check_sheet_url = "https://docs.google.com/spreadsheets/d/1EofzMjd3dAq8sRCdQXpxw3_-T1VDWpd-aDrvxWD4fYc/export?format=csv&gid=1552856942"
         target_url = check_sheet_url if gid == "1552856942" else f"{base_url}{gid}"
     
@@ -51,16 +51,29 @@ def load_sheet_data(gid="0", custom_url=None):
     except:
         return None
 
-# --- 巡回ナビ用データ取得関数（Pandasベース・キャッシュ30秒） ---
+# --- 巡回ナビ用データ取得関数（任意のURL/CSVからPandasで取得・キャッシュ30秒） ---
 @st.cache_data(ttl=30)
-def load_navi_data_from_sheets(spreadsheet_id, sheet_name):
-    url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(sheet_name)}"
+def load_navi_data_from_url(csv_url):
     try:
-        df = pd.read_csv(url)
+        df = pd.read_csv(csv_url)
         df.columns = df.columns.str.strip()
         return df.to_dict(orient="records")
     except:
         return []
+
+# --- スプレッドシートURLからIDとgidを抜き出すヘルパー関数 ---
+def extract_ss_details(url_str):
+    if not url_str or "docs.google.com" not in url_str:
+        return None, None
+    ss_id = None
+    gid = "0"
+    id_match = re.search(r'/d/([a-zA-Z0-9-_]+)', url_str)
+    if id_match:
+        ss_id = id_match.group(1)
+    gid_match = re.search(r'gid=([0-9]+)', url_str)
+    if gid_match:
+        gid = gid_match.group(1)
+    return ss_id, gid
 
 # --- 日付解析関数 ---
 def parse_flexible_date(date_str):
@@ -383,28 +396,71 @@ def render_daily_checklist():
                     confirm_task_dialog(item)
 
 
-# === 🚗 巡回ナビ画面（新しく追加したアプリ） ===
+# === 🚗 動的巡回ナビ画面（新マスター連動版） ===
 def route_navigation_screen():
     inject_pwa_blocker()
     
-    # 戻るボタンを上部に配置
     if st.button("⬅️ メインメニューに戻る", use_container_width=True):
         st.session_state.current_page = "main"
         st.rerun()
         
-    st.write("### 🚗 113号車 顧客巡回ルート作成")
+    st.write("### 🚗 顧客巡回ルート作成ナビ")
     
-    selected_sheet = st.selectbox("📂 運行ルート（シート名）を選択", NAVI_SHEET_NAMES)
+    # 1. マスターデータの全取得
+    master_rows = load_sheet_data(gid=MASTER_GID)
+    if not master_rows or len(master_rows) < 2:
+        st.error("ルート一覧マスターデータの読み込みに失敗しました。Webに公開されているか確認してください。")
+        return
 
-    if selected_sheet != st.session_state.get("last_selected_sheet"):
+    # 2. 号車リスト（A列）とルート曜日リスト（1行目）を抽出
+    routes_header = [col.strip() for col in master_rows[0][1:] if col.strip()] # B1, C1, D1...
+    
+    car_list = []
+    car_to_row_idx = {}
+    for r_idx, row in enumerate(master_rows[1:], start=1):
+        if row and row[0].strip():
+            car_num = row[0].strip()
+            car_list.append(car_num)
+            car_to_row_idx[car_num] = r_idx
+
+    # 3. 画面に選択ドロップダウン（セレクトボックス）を表示
+    col_sel1, col_sel2 = st.columns(2)
+    with col_sel1:
+        selected_car = st.selectbox("🚌 担当号車を選択", car_list, index=0)
+    with col_sel2:
+        selected_route = st.selectbox("📂 運行ルート（曜日）を選択", routes_header, index=0)
+
+    # 選択が切り替わったら選択ルート状態をリセットする処理
+    current_selection_key = f"{selected_car}_{selected_route}"
+    if st.session_state.get("last_navi_selection_key") != current_selection_key:
         st.session_state.selected_route_nodes = []
-        st.session_state.last_selected_sheet = selected_sheet
+        st.session_state.last_navi_selection_key = current_selection_key
 
-    with st.spinner("最新データを読み込み中..."):
-        current_customers = load_navi_data_from_sheets(NAVI_SPREADSHEET_ID, selected_sheet)
+    # 4. 選択された「号車」と「ルート」の交点セルからURLを抽出
+    target_row_idx = car_to_row_idx[selected_car]
+    target_col_idx = master_rows[0].index(selected_route)
+    
+    target_url_str = ""
+    if len(master_rows[target_row_idx]) > target_col_idx:
+        target_url_str = master_rows[target_row_idx][target_col_idx].strip()
+
+    if not target_url_str:
+        st.warning(f"⚠️ 選択された【{selected_car}号車 - {selected_route}】にはルートデータのURLが登録されていません。")
+        return
+
+    # URLからSS_IDとGidを抽出してCSVエクスポート用URLを生成
+    ss_id, sheet_gid = extract_ss_details(target_url_str)
+    if not ss_id:
+        st.error("登録されているURLの形式が正しくありません。GoogleスプレッドシートのURLであることを確認してください。")
+        return
+
+    target_csv_url = f"https://docs.google.com/spreadsheets/d/{ss_id}/export?format=csv&gid={sheet_gid}"
+
+    with st.spinner("対象シートの最新データを読み込み中..."):
+        current_customers = load_navi_data_from_url(target_csv_url)
 
     if not current_customers:
-        st.warning(f"表示できるデータがありません。シート「{selected_sheet}」に「名前」と「住所」の列があるか確認してください。")
+        st.warning("表示できるデータがありません。対象シートが「ウェブに公開」されており、1行目に「名前」と「住所」の列があるか確認してください。")
         return
 
     col_left, col_right = st.columns([1.8, 1.2])
@@ -412,7 +468,7 @@ def route_navigation_screen():
     with col_left:
         st.caption("📌 訪問する順番にタップしてください")
         for customer in current_customers:
-            name = customer.get("名前", "名前なし")
+            name = customer.get("名前") or customer.get("顧客名") or "名前なし"
             address = customer.get("住所", "")
             
             if pd.isna(address) or not str(address).strip():
@@ -710,7 +766,6 @@ def main_screen():
         b4 = get_img_html("5.png", "🧽")
         b5 = get_img_html("image_d3349a.png", "🎓")
 
-        # 💡 4カラム配置（最後の枠に「巡回ナビ」への切り替えボタンを設置するためにHTMLを少し調整）
         grid_html = f'''
             <div class="button-grid">
                 <a class="btn-item" href="https://docs.google.com/forms/d/e/1FAIpQLSc4E3L_UJkVxMMSTOYgcw3SJyoBixHoJfhe0WC-x1wbK6lsHw/viewform?usp=sharing" target="_blank">{b1}<p class="btn-text" style="margin-top:6px;">メンテナンス<br>入力</p></a>
@@ -721,8 +776,8 @@ def main_screen():
         '''
         st.markdown(grid_html, unsafe_allow_html=True)
 
-        # 🚗 4枚のタイルの下に「113号車 巡回ナビ」へ画面遷移するボタンを配置
-        if st.button("🚗 113号車 巡回ルートナビを開く", type="primary", use_container_width=True):
+        # 🚗 巡回ナビ起動ボタン（どの号車の人でも遷移できるように文言を汎用化）
+        if st.button("🚗 顧客巡回ルートナビを開く", type="primary", use_container_width=True):
             st.session_state.current_page = "navi"
             st.rerun()
 
@@ -793,7 +848,6 @@ if not st.session_state.login_status and not st.session_state.logout_requested:
         st.session_state.login_status = True
 
 if st.session_state.login_status:
-    # ページ状態によって表示を切り替え
     if st.session_state.current_page == "navi":
         route_navigation_screen()
     else:
