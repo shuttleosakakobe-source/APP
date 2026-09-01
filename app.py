@@ -405,7 +405,19 @@ def render_route_change_tabs():
     # 💡 【CSS調整】disabled入力の文字が薄くて読みにくいのを解消（商品発注タブと同じ調整）
     st.markdown("""
         <style>
-        input:disabled, textarea:disabled {
+        /* 🔧 disabled/readonly文字が薄い問題の対策
+           Streamlitのバージョンによって disabled 属性ではなく readonly や aria-disabled で
+           表現される場合があり、:disabled だけでは効かないことがあるため、
+           入力欄そのものに常に濃い文字色を強制する（状態を問わず適用） */
+        div[data-testid="stTextInput"] input,
+        div[data-testid="stTextArea"] textarea,
+        div[data-testid="stNumberInput"] input {
+            -webkit-text-fill-color: #31333F !important;
+            color: #31333F !important;
+            opacity: 1 !important;
+        }
+        input:disabled, input:read-only, input[aria-disabled="true"],
+        textarea:disabled, textarea:read-only, textarea[aria-disabled="true"] {
             -webkit-text-fill-color: #31333F !important;
             color: #31333F !important;
             opacity: 1 !important;
@@ -1225,6 +1237,15 @@ def cc_items_display_df(items):
     return pd.DataFrame(rows)
 
 
+def _cc_cycle_disp(val):
+    """周期の表示用文字列。値があれば末尾に「W」を付ける（例: "2" → "2W"）。
+    ※ 計算・保存用の値には使わず、あくまで画面表示専用"""
+    s = str(val).strip() if val is not None else ""
+    if not s:
+        return ""
+    return f"{s}W"
+
+
 def cc_render_items_readonly(items, key_prefix):
     """5商品分のitems（cc_extract_itemsの戻り値）を、TAB1の新規申請フォームと同じ
     「🔵 変更前」「🟢 変更後」カード形式（読み取り専用）で表示する（TAB2〜4の確認画面用）。
@@ -1243,7 +1264,7 @@ def cc_render_items_readonly(items, key_prefix):
         before_count = _cc_sum4(d["before_a"], d["before_b"], d["before_c"], d["before_d"])
         b_row1[1].text_input("契約数", value=before_count, disabled=True, key=f"{key_prefix}_b_count_{n}")
         b_row1[2].text_input("単価", value=d["before_price"], disabled=True, key=f"{key_prefix}_b_price_{n}")
-        b_row1[3].text_input("周期", value=d["before_cycle"], disabled=True, key=f"{key_prefix}_b_cycle_{n}")
+        b_row1[3].text_input("周期", value=_cc_cycle_disp(d["before_cycle"]), disabled=True, key=f"{key_prefix}_b_cycle_{n}")
         b_row2[0].text_input("A", value=d["before_a"], disabled=True, key=f"{key_prefix}_b_a_{n}")
         b_row2[1].text_input("B", value=d["before_b"], disabled=True, key=f"{key_prefix}_b_b_{n}")
         b_row2[2].text_input("C", value=d["before_c"], disabled=True, key=f"{key_prefix}_b_c_{n}")
@@ -1256,7 +1277,7 @@ def cc_render_items_readonly(items, key_prefix):
         after_count = _cc_sum4(d["after_a"], d["after_b"], d["after_c"], d["after_d"])
         a_row1[1].text_input("契約数", value=after_count, disabled=True, key=f"{key_prefix}_a_count_{n}")
         a_row1[2].text_input("単価", value=d["after_price"], disabled=True, key=f"{key_prefix}_a_price_{n}")
-        a_row1[3].text_input("周期", value=d["after_cycle"], disabled=True, key=f"{key_prefix}_a_cycle_{n}")
+        a_row1[3].text_input("周期", value=_cc_cycle_disp(d["after_cycle"]), disabled=True, key=f"{key_prefix}_a_cycle_{n}")
         a_row2[0].text_input("A", value=d["after_a"], disabled=True, key=f"{key_prefix}_a_a_{n}")
         a_row2[1].text_input("B", value=d["after_b"], disabled=True, key=f"{key_prefix}_a_b_{n}")
         a_row2[2].text_input("C", value=d["after_c"], disabled=True, key=f"{key_prefix}_a_c_{n}")
@@ -1271,7 +1292,19 @@ def render_contract_change_tabs():
     # 💡 【CSS調整】disabled入力の文字が薄くて読みにくいのを解消
     st.markdown("""
         <style>
-        input:disabled, textarea:disabled {
+        /* 🔧 disabled/readonly文字が薄い問題の対策
+           Streamlitのバージョンによって disabled 属性ではなく readonly や aria-disabled で
+           表現される場合があり、:disabled だけでは効かないことがあるため、
+           入力欄そのものに常に濃い文字色を強制する（状態を問わず適用） */
+        div[data-testid="stTextInput"] input,
+        div[data-testid="stTextArea"] textarea,
+        div[data-testid="stNumberInput"] input {
+            -webkit-text-fill-color: #31333F !important;
+            color: #31333F !important;
+            opacity: 1 !important;
+        }
+        input:disabled, input:read-only, input[aria-disabled="true"],
+        textarea:disabled, textarea:read-only, textarea[aria-disabled="true"] {
             -webkit-text-fill-color: #31333F !important;
             color: #31333F !important;
             opacity: 1 !important;
@@ -2073,7 +2106,10 @@ def render_contract_change_tabs():
                             for n in range(CC_ITEM_COUNT):
                                 it = items[n] if n < len(items) else _cc_empty_print_item
                                 for col_i, field in enumerate(item_col_order, start=1):
-                                    cells.append({"offset": 3 + n, "col": col_i, "value": it.get(field, "")})
+                                    val = it.get(field, "")
+                                    if field in ("before_cycle", "after_cycle"):
+                                        val = _cc_cycle_disp(val)
+                                    cells.append({"offset": 3 + n, "col": col_i, "value": val})
 
                             cells += [
                                 {"offset": 9, "col": 1, "value": rec["reason"]},
@@ -2174,7 +2210,19 @@ def render_product_order_tabs():
     # 💡 【CSS調整】指定レイアウトに合わせた帳票・印刷用スタイル定義
     st.markdown("""
         <style>
-        input:disabled, textarea:disabled {
+        /* 🔧 disabled/readonly文字が薄い問題の対策
+           Streamlitのバージョンによって disabled 属性ではなく readonly や aria-disabled で
+           表現される場合があり、:disabled だけでは効かないことがあるため、
+           入力欄そのものに常に濃い文字色を強制する（状態を問わず適用） */
+        div[data-testid="stTextInput"] input,
+        div[data-testid="stTextArea"] textarea,
+        div[data-testid="stNumberInput"] input {
+            -webkit-text-fill-color: #31333F !important;
+            color: #31333F !important;
+            opacity: 1 !important;
+        }
+        input:disabled, input:read-only, input[aria-disabled="true"],
+        textarea:disabled, textarea:read-only, textarea[aria-disabled="true"] {
             -webkit-text-fill-color: #31333F !important;
             color: #31333F !important;
             opacity: 1 !important;
