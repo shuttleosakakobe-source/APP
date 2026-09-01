@@ -2075,8 +2075,7 @@ def render_contract_change_tabs():
                         def cc_cells_for_record(rec):
                             """1件分のデータを、base_row行目を起点にした「行オフセット・列・値」のリストに変換する。
                             指定されていないセル（行・列）はテンプレート側の固定内容として一切触らない。
-                            A/C/H(+0)=加盟店コード/顧客名/シャトルコード(顧客コード),
-                            J/L/O(+1)=担当者名/責任者名/処理者,
+                            A/C/H/J/L/O(+0)=加盟店コード/顧客名/シャトルコード(顧客コード)/担当者名/責任者名/処理者,
                             商品①〜⑤はA〜H列(+3〜+7)=変更前(記号/契約数/単価/周期/A/B/C/D)、I〜P列=変更後(同順),
                             A/I/L(+9)=理由/連絡担当者様/増減金額, A/L(+11)=特記事項/次回訪問日"""
                             if not rec:
@@ -2091,9 +2090,12 @@ def render_contract_change_tabs():
                                 {"offset": 0, "col": 1, "value": rec["store_code"]},
                                 {"offset": 0, "col": 3, "value": rec["cust_name"]},
                                 {"offset": 0, "col": 8, "value": rec["cust_code"]},
-                                {"offset": 1, "col": 10, "value": rec["staff_name"]},
-                                {"offset": 1, "col": 12, "value": rec["manager"]},
-                                {"offset": 1, "col": 15, "value": rec["operator"]},
+                                # 💡 担当者/責任者サイン/処理者は「変更前/変更後」の見出し行(offset 1)ではなく、
+                                #    加盟店コード等と同じ行(offset 0)にある。offset 1のcol10/12/15は
+                                #    「変更後」の結合セル(I:P)の内側に埋もれて見た目に反映されなかったため修正。
+                                {"offset": 0, "col": 10, "value": rec["staff_name"]},
+                                {"offset": 0, "col": 12, "value": rec["manager"]},
+                                {"offset": 0, "col": 15, "value": rec["operator"]},
                             ]
 
                             item_col_order = [
